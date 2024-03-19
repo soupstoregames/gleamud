@@ -7,9 +7,12 @@ pub type DiceRoll {
 }
 
 pub type DamageType {
-  Brute
-  Burn
-  Shock
+  Bludgeoning
+  Slashing
+  Piercing
+
+  Fire
+  Ice
 }
 
 pub type PaperDollSlotType {
