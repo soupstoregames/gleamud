@@ -1,6 +1,6 @@
 import gleam/int
 import gleam/list
-import gleam/option.{type Option, Some}
+import gleam/option.{type Option, None, Some}
 
 pub type DiceRoll {
   DiceRoll(sides: Int, number: Int)
@@ -19,24 +19,10 @@ pub type PaperDollSlotType {
   Head
   Chest
   Back
-  Hand
+  PrimaryHand
+  OffHand
   Legs
   Feet
-}
-
-fn paper_doll_slot_type_value(slot_type: PaperDollSlotType) -> Int {
-  case slot_type {
-    Head -> 0
-    Chest -> 1
-    Back -> 2
-    Hand -> 3
-    Legs -> 4
-    Feet -> 5
-  }
-}
-
-pub type PaperDollSlot {
-  PaperDollSlot(slot_type: PaperDollSlotType, entity: Option(Entity))
 }
 
 pub type Entity {
@@ -58,7 +44,14 @@ pub type Component {
   Named(name: String)
   Physical(hp: Int, size: Int)
 
-  PaperDoll(slots: List(PaperDollSlot))
+  PaperDollHead(entity: Option(Entity))
+  PaperDollChest(entity: Option(Entity))
+  PaperDollBack(entity: Option(Entity))
+  PaperDollPrimaryHand(entity: Option(Entity))
+  PaperDollOffHand(entity: Option(Entity))
+  PaperDollLegs(entity: Option(Entity))
+  PaperDollFeet(entity: Option(Entity))
+
   Equipable(slot_types: List(PaperDollSlotType))
 
   MeleeWeapon(damage: DiceRoll, damage_type: DamageType)
@@ -71,7 +64,14 @@ fn component_priority(component: Component) -> Int {
     Named(_) -> 100
     Physical(_, _) -> 110
 
-    PaperDoll(_) -> 1000
+    PaperDollHead(_) -> 1000
+    PaperDollBack(_) -> 1001
+    PaperDollChest(_) -> 1002
+    PaperDollPrimaryHand(_) -> 1003
+    PaperDollOffHand(_) -> 1004
+    PaperDollLegs(_) -> 1005
+    PaperDollFeet(_) -> 1006
+
     Equipable(_) -> 1100
 
     MeleeWeapon(_, _) -> 10_000
@@ -82,25 +82,54 @@ pub type Query {
   QueryName(name: Option(String))
   QueryStatus(hp: Option(Int))
   QueryEquipable(slots: List(PaperDollSlotType))
+  QueryPaperDoll(slots: List(#(PaperDollSlotType, Option(String))))
 }
 
 pub type Event {
   AddComponents(components: List(Component))
 
   TakeDamage(amount: Int)
-  AddPaperDollSlot(slot: PaperDollSlot)
 }
 
 pub fn query(entity: Entity, query: Query) -> Query {
   list.fold(entity.components, query, query_loop)
 }
 
-fn query_loop(query: Query, component: Component) -> Query {
-  case component, query {
+fn query_loop(q: Query, c: Component) -> Query {
+  case c, q {
     Named(name), QueryName(_) -> QueryName(name: Some(name))
     Physical(hp, _size), QueryStatus(_) -> QueryStatus(hp: Some(hp))
     Equipable(slots), QueryEquipable(_) -> QueryEquipable(slots: slots)
-    _, _ -> query
+
+    PaperDollHead(entity), QueryPaperDoll(query_slots) ->
+      QueryPaperDoll(
+        list.append(query_slots, [#(Head, name_optional_entity(entity))]),
+      )
+    PaperDollBack(entity), QueryPaperDoll(query_slots) ->
+      QueryPaperDoll(
+        list.append(query_slots, [#(Back, name_optional_entity(entity))]),
+      )
+    PaperDollChest(entity), QueryPaperDoll(query_slots) ->
+      QueryPaperDoll(
+        list.append(query_slots, [#(Chest, name_optional_entity(entity))]),
+      )
+    PaperDollPrimaryHand(entity), QueryPaperDoll(query_slots) ->
+      QueryPaperDoll(
+        list.append(query_slots, [#(PrimaryHand, name_optional_entity(entity))]),
+      )
+    PaperDollOffHand(entity), QueryPaperDoll(query_slots) ->
+      QueryPaperDoll(
+        list.append(query_slots, [#(OffHand, name_optional_entity(entity))]),
+      )
+    PaperDollLegs(entity), QueryPaperDoll(query_slots) ->
+      QueryPaperDoll(
+        list.append(query_slots, [#(Legs, name_optional_entity(entity))]),
+      )
+    PaperDollFeet(entity), QueryPaperDoll(query_slots) ->
+      QueryPaperDoll(
+        list.append(query_slots, [#(Feet, name_optional_entity(entity))]),
+      )
+    _, _ -> q
   }
 }
 
@@ -136,17 +165,18 @@ fn apply_event(component: Component, event: Event) -> Component {
   case component, event {
     Physical(hp, size), TakeDamage(amount) ->
       Physical(hp: hp - amount, size: size)
-    PaperDoll(slots), AddPaperDollSlot(slot) -> {
-      let new_slots =
-        slots
-        |> list.append([slot])
-        |> list.sort(fn(slot_a: PaperDollSlot, slot_b: PaperDollSlot) {
-          let val_a = paper_doll_slot_type_value(slot_a.slot_type)
-          let val_b = paper_doll_slot_type_value(slot_b.slot_type)
-          int.compare(val_a, val_b)
-        })
-      PaperDoll(slots: new_slots)
-    }
     _, _ -> component
+  }
+}
+
+fn name_optional_entity(entity: Option(Entity)) -> Option(String) {
+  case entity {
+    Some(equiped) -> {
+      case query(equiped, QueryName(None)) {
+        QueryName(Some(_) as some) -> some
+        _ -> Some("unknown")
+      }
+    }
+    None -> None
   }
 }

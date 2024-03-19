@@ -37,20 +37,51 @@ pub fn query_status_test() {
 }
 
 pub fn query_equipable_test() {
-  let equipable = entity.new([entity.Equipable([entity.Hand, entity.Back])])
+  let equipable =
+    entity.new([entity.Equipable([entity.PrimaryHand, entity.Back])])
 
   let assert entity.QueryEquipable(slots) =
     equipable
     |> query(entity.QueryEquipable([]))
 
   slots
-  |> should.equal([entity.Hand, entity.Back])
+  |> should.equal([entity.PrimaryHand, entity.Back])
 
   let not_equipable = entity.new([])
 
   let assert entity.QueryEquipable([]) =
     not_equipable
     |> query(entity.QueryEquipable([]))
+}
+
+pub fn query_paper_doll_test() {
+  let paper_doll =
+    entity.new([
+      entity.PaperDollHead(Some(entity.new([entity.Named("Cap")]))),
+      entity.PaperDollHead(None),
+      entity.PaperDollBack(Some(entity.new([entity.Named("Backpack")]))),
+      entity.PaperDollChest(Some(entity.new([]))),
+      entity.PaperDollPrimaryHand(Some(entity.new([entity.Named("Sword")]))),
+      entity.PaperDollOffHand(Some(entity.new([entity.Named("Buckler")]))),
+      entity.PaperDollLegs(Some(entity.new([entity.Named("Trousers")]))),
+      entity.PaperDollFeet(Some(entity.new([entity.Named("Boots")]))),
+    ])
+
+  let assert entity.QueryPaperDoll(slots) =
+    paper_doll
+    |> query(entity.QueryPaperDoll([]))
+
+  slots
+  |> should.equal([
+    #(entity.Head, Some("Cap")),
+    #(entity.Head, None),
+    #(entity.Back, Some("Backpack")),
+    #(entity.Chest, Some("unknown")),
+    #(entity.PrimaryHand, Some("Sword")),
+    #(entity.OffHand, Some("Buckler")),
+    #(entity.Legs, Some("Trousers")),
+    #(entity.Feet, Some("Boots")),
+  ])
 }
 
 pub fn take_damage_test() {
