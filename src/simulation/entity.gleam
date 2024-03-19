@@ -1,8 +1,9 @@
 import gleam/int
 import gleam/list
+import gleam/option.{type Option, Some}
 
 pub type DiceRoll {
-  D6(number: Int)
+  DiceRoll(sides: Int, number: Int)
 }
 
 pub type DamageType {
@@ -32,11 +33,20 @@ fn paper_doll_slot_type_value(slot_type: PaperDollSlotType) -> Int {
 }
 
 pub type PaperDollSlot {
-  PaperDollSlot(slot_type: PaperDollSlotType, entity: Entity)
+  PaperDollSlot(slot_type: PaperDollSlotType, entity: Option(Entity))
 }
 
 pub type Entity {
   Entity(components: List(Component))
+}
+
+pub fn new(components: List(Component)) -> Entity {
+  Entity(
+    components
+    |> list.sort(fn(a, b) {
+      int.compare(component_priority(a), component_priority(b))
+    }),
+  )
 }
 
 pub type Component {
@@ -46,17 +56,34 @@ pub type Component {
   Physical(hp: Int, size: Int)
 
   PaperDoll(slots: List(PaperDollSlot))
-  Equipable(slot_type: PaperDollSlotType)
+  Equipable(slot_types: List(PaperDollSlotType))
 
   MeleeWeapon(damage: DiceRoll, damage_type: DamageType)
 }
 
+fn component_priority(component: Component) -> Int {
+  case component {
+    Invulnerable -> 1
+
+    Named(_) -> 100
+    Physical(_, _) -> 110
+
+    PaperDoll(_) -> 1000
+    Equipable(_) -> 1100
+
+    MeleeWeapon(_, _) -> 10_000
+  }
+}
+
 pub type Query {
-  QueryName(name: String)
-  QueryStatus(hp: Int)
+  QueryName(name: Option(String))
+  QueryStatus(hp: Option(Int))
+  QueryEquipable(slots: List(PaperDollSlotType))
 }
 
 pub type Event {
+  AddComponents(components: List(Component))
+
   TakeDamage(amount: Int)
   AddPaperDollSlot(slot: PaperDollSlot)
 }
@@ -67,16 +94,32 @@ pub fn query(entity: Entity, query: Query) -> Query {
 
 fn query_loop(query: Query, component: Component) -> Query {
   case component, query {
-    Named(name), QueryName(_) -> QueryName(name: name)
-    Physical(hp, _size), QueryStatus(_) -> QueryStatus(hp: hp)
+    Named(name), QueryName(_) -> QueryName(name: Some(name))
+    Physical(hp, _size), QueryStatus(_) -> QueryStatus(hp: Some(hp))
+    Equipable(slots), QueryEquipable(_) -> QueryEquipable(slots: slots)
     _, _ -> query
   }
 }
 
 pub fn handle_event(entity: Entity, event: Event) -> #(Entity, Event) {
-  let event = list.fold(entity.components, event, transform_event)
-  let new_components = list.map(entity.components, apply_event(_, event))
-  #(Entity(components: new_components), event)
+  case event {
+    AddComponents(components) -> {
+      let new_components =
+        components
+        |> list.fold(entity.components, fn(components, component) {
+          [component, ..components]
+        })
+        |> list.sort(fn(a, b) {
+          int.compare(component_priority(a), component_priority(b))
+        })
+      #(Entity(components: new_components), event)
+    }
+    _ -> {
+      let event = list.fold(entity.components, event, transform_event)
+      let new_components = list.map(entity.components, apply_event(_, event))
+      #(Entity(components: new_components), event)
+    }
+  }
 }
 
 fn transform_event(event: Event, component: Component) -> Event {
