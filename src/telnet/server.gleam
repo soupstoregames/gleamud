@@ -1,19 +1,27 @@
 import gleam/bytes_builder
 import gleam/bit_array.{to_string}
-import gleam/erlang/process
+import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
 import gleam/option.{type Option, None}
-import glisten.{type Connection, Packet}
+import glisten.{Packet}
 import telnet/constants
-import telnet/states/states
-import telnet/states/menu
+import model/simulation
+import telnet/game_connection
 
-pub fn start(port: Int) {
-  glisten.handler(init, handler)
+pub fn start(port: Int, sim_subject: Subject(simulation.Control)) {
+  glisten.handler(init(_, sim_subject), handler)
   |> glisten.serve(port)
 }
 
-fn init(conn) -> #(states.State, Option(process.Selector(b))) {
+fn init(
+  conn,
+  sim_subject: Subject(simulation.Control),
+) -> #(Subject(game_connection.Message), Option(process.Selector(b))) {
+  let parent_subject = process.new_subject()
+  let assert Ok(_subject) =
+    game_connection.start(parent_subject, sim_subject, conn)
+  let assert Ok(tcp_subject) = process.receive(parent_subject, 1000)
+
   let assert Ok(_) =
     glisten.send(
       conn,
@@ -33,22 +41,19 @@ fn init(conn) -> #(states.State, Option(process.Selector(b))) {
       ]),
     )
 
-  #(states.FirstIAC(states.ClientDimensions(width: 80, height: 24)), None)
+  #(tcp_subject, None)
 }
 
-fn handler(msg, state, conn) {
+fn handler(msg, state, _conn) {
   let assert Packet(msg) = msg
-  actor.continue(case msg {
-    <<255, _:bytes>> -> handle_iac(msg, state, conn)
-    _ -> handle_input(msg, state, conn)
-  })
+  case msg {
+    <<255, _:bytes>> -> handle_iac(msg, state)
+    _ -> handle_input(msg, state)
+  }
+  actor.continue(state)
 }
 
-fn handle_iac(
-  msg: BitArray,
-  state: states.State,
-  conn: Connection(_),
-) -> states.State {
+fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
   // this is gross
   case msg {
     <<
@@ -71,29 +76,22 @@ fn handle_iac(
       255,
       240,
     >>
-    | <<255, 250, 31, width, width2, height, height2, 255, 240>> ->
-      case state {
-        states.FirstIAC(_) ->
-          states.Menu(client_dimensions: states.ClientDimensions(width*256 + width2, height*256 + height2))
-          |> menu.on_enter(conn)
-        states.Menu(_) ->
-          states.Menu(client_dimensions: states.ClientDimensions(width*256 + width2, height*256 + height2))
-      }
-    _ -> state
+    | <<255, 250, 31, width, width2, height, height2, 255, 240>> -> {
+      process.send(
+        tcp_subject,
+        game_connection.Dimensions(width * 256 + width2, height * 265 + height2),
+      )
+      Nil
+    }
+    _ -> Nil
   }
 }
 
-fn handle_input(
-  msg: BitArray,
-  state: states.State,
-  conn: Connection(_),
-) -> states.State {
+fn handle_input(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
   case to_string(msg) {
-    Ok(str) ->
-      case state {
-        states.FirstIAC(_) -> state
-        states.Menu(_) -> menu.handle_input(state, conn, str)
-      }
-    Error(_) -> state
+    Ok(str) -> {
+      process.send(tcp_subject, game_connection.Data(str))
+    }
+    Error(_) -> Nil
   }
 }
