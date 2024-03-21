@@ -1,6 +1,6 @@
 import gleam/option.{None, Some}
 import gleeunit/should
-import model/entity.{handle_event, query}
+import data/entity.{handle_event, query}
 
 pub fn query_name_test() {
   let named = entity.new([entity.Named("named")])

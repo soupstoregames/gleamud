@@ -3,6 +3,7 @@ import gleam/option.{type Option, None, Some}
 import telnet/utils
 import telnet/states/states.{type State}
 import model/simulation
+import model/entity
 
 const logo = "
         .__                                  .___
@@ -39,7 +40,7 @@ pub fn on_enter(state: State) -> State {
 pub fn handle_input(
   state: State,
   msg: String,
-) -> #(State, Option(Subject(simulation.Update))) {
+) -> #(State, Option(Subject(entity.Update))) {
   case msg {
     "3" -> {
       let update_subject = process.new_subject()

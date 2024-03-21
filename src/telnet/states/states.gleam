@@ -1,5 +1,6 @@
 import gleam/erlang/process.{type Subject}
 import gleam/option.{type Option, Some}
+import model/entity
 import model/simulation
 import glisten.{type Connection}
 
@@ -28,13 +29,13 @@ pub type ClientDimensions {
 pub type Directory {
   Directory(
     sim_subject: Subject(simulation.Control),
-    command_subject: Option(Subject(simulation.Command)),
+    command_subject: Option(Subject(entity.Command)),
   )
 }
 
 pub fn with_command_subject(
   state: State,
-  subject: Subject(simulation.Command),
+  subject: Subject(entity.Command),
 ) -> State {
   case state {
     FirstIAC(_, _, _) -> state
