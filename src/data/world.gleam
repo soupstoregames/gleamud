@@ -1,6 +1,6 @@
 import gleam/dict.{type Dict}
 import gleam/otp/task
-import model/core
+import data/core
 
 pub type DataError {
   DataError
