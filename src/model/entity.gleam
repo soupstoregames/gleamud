@@ -52,7 +52,7 @@ pub fn new(
         let entity_subject = process.new_subject()
         process.send(parent_subject, entity_subject)
 
-        // send the command subject over the update subject to the game controller
+        // send the command subject over the update subject to the game connection
         let command_subject = process.new_subject()
         process.send(update_subject, CommandSubject(command_subject))
 

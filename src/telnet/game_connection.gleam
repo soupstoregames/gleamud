@@ -1,5 +1,5 @@
 import gleam/erlang/process.{type Subject}
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import telnet/states/states
 import telnet/states/menu
@@ -12,6 +12,10 @@ pub type Message {
   Dimensions(Int, Int)
   Data(String)
   Update(entity.Update)
+}
+
+type ConnState {
+  ConnState(tcp_subject: Subject(Message), game_state: states.State)
 }
 
 pub fn start(
@@ -29,7 +33,7 @@ pub fn start(
         |> process.selecting(tcp_subject, function.identity)
 
       actor.Ready(
-        #(
+        ConnState(
           tcp_subject,
           states.FirstIAC(
             conn: conn,
@@ -50,8 +54,8 @@ pub fn start(
 
 fn handle_message(
   message: Message,
-  state: #(Subject(Message), states.State),
-) -> actor.Next(Message, #(Subject(Message), states.State)) {
+  state: ConnState,
+) -> actor.Next(Message, ConnState) {
   case message {
     Dimensions(width, height) -> handle_dimensions(state, width, height)
     Data(str) -> handle_data(state, str)
@@ -60,51 +64,66 @@ fn handle_message(
 }
 
 fn handle_dimensions(
-  state: #(Subject(Message), states.State),
+  state: ConnState,
   width: Int,
   height: Int,
-) -> actor.Next(Message, #(Subject(Message), states.State)) {
-  case state.1 {
+) -> actor.Next(Message, ConnState) {
+  case state.game_state {
     states.FirstIAC(conn, _, directory) ->
-      actor.continue(#(
-        state.0,
-        states.Menu(conn, states.ClientDimensions(width, height), directory)
+      actor.continue(
+        ConnState(
+          ..state,
+          game_state: states.Menu(
+            conn,
+            states.ClientDimensions(width, height),
+            directory,
+          )
           |> menu.on_enter(),
-      ))
+        ),
+      )
 
     states.Menu(conn, _, directory) ->
-      actor.continue(#(
-        state.0,
-        states.Menu(conn, states.ClientDimensions(width, height), directory),
-      ))
+      actor.continue(
+        ConnState(
+          ..state,
+          game_state: states.Menu(
+            conn,
+            states.ClientDimensions(width, height),
+            directory,
+          ),
+        ),
+      )
 
     states.InWorld(conn, _, directory) ->
-      actor.continue(#(
-        state.0,
-        states.InWorld(conn, states.ClientDimensions(width, height), directory),
-      ))
+      actor.continue(
+        ConnState(
+          ..state,
+          game_state: states.InWorld(
+            conn,
+            states.ClientDimensions(width, height),
+            directory,
+          ),
+        ),
+      )
   }
 }
 
-fn handle_data(
-  state: #(Subject(Message), states.State),
-  str: String,
-) -> actor.Next(Message, #(Subject(Message), states.State)) {
-  case state.1 {
+fn handle_data(state: ConnState, str: String) -> actor.Next(Message, ConnState) {
+  case state.game_state {
     states.FirstIAC(_, _, _) -> actor.continue(state)
     states.Menu(_, _, _) -> {
       let #(new_state, command_subject) =
-        state.1
+        state.game_state
         |> menu.handle_input(str)
       case command_subject {
-        Some(subject) ->
+        Some(update_subject) ->
           actor.with_selector(
-            actor.continue(#(state.0, new_state)),
+            actor.continue(ConnState(..state, game_state: new_state)),
             process.new_selector()
-              |> process.selecting(state.0, function.identity)
-              |> process.selecting(subject, fn(update) { Update(update) }),
+              |> process.selecting(state.tcp_subject, function.identity)
+              |> process.selecting(update_subject, fn(update) { Update(update) }),
           )
-        None -> actor.continue(#(state.0, new_state))
+        None -> actor.continue(ConnState(..state, game_state: new_state))
       }
     }
     states.InWorld(_, _, _) -> actor.continue(state)
@@ -112,15 +131,16 @@ fn handle_data(
 }
 
 fn handle_update(
-  state: #(Subject(Message), states.State),
+  state: ConnState,
   update: entity.Update,
-) -> actor.Next(Message, #(Subject(Message), states.State)) {
+) -> actor.Next(Message, ConnState) {
   case update {
     entity.CommandSubject(subject) ->
-      actor.continue(#(
-        state.0,
-        state.1
-          |> states.with_command_subject(subject),
-      ))
+      actor.continue(
+        ConnState(
+          ..state,
+          game_state: states.with_command_subject(state.game_state, subject),
+        ),
+      )
   }
 }
