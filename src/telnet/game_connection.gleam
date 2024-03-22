@@ -6,12 +6,11 @@ import telnet/states/states
 import model/simulation
 import gleam/function
 import glisten
-import model/sim_messages as msg
 
 pub type Message {
   Dimensions(Int, Int)
   Data(BitArray)
-  Update(msg.Update)
+  Update(simulation.Update)
 }
 
 type ConnState {
@@ -135,17 +134,17 @@ fn handle_data(
 
 fn handle_update(
   state: ConnState,
-  update: msg.Update,
+  update: simulation.Update,
 ) -> actor.Next(Message, ConnState) {
   case update {
-    msg.CommandSubject(subject) ->
+    simulation.CommandSubject(subject) ->
       actor.continue(
         ConnState(
           ..state,
           game_state: states.with_command_subject(state.game_state, subject),
         ),
       )
-    msg.RoomDescription(_, _, _) -> {
+    simulation.RoomDescription(_, _, _) -> {
       actor.continue(
         ConnState(
           ..state,

@@ -3,7 +3,6 @@ import gleam/erlang/process.{type Subject}
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import model/simulation
-import model/sim_messages as msg
 import glisten.{type Connection}
 import telnet/render
 import gleam/io
@@ -36,13 +35,13 @@ pub type ClientDimensions {
 pub type Directory {
   Directory(
     sim_subject: Subject(simulation.Control),
-    command_subject: Option(Subject(msg.Command)),
+    command_subject: Option(Subject(simulation.Command)),
   )
 }
 
 pub fn with_command_subject(
   state: State,
-  subject: Subject(msg.Command),
+  subject: Subject(simulation.Command),
 ) -> State {
   case state {
     FirstIAC(_, _, _, _) -> state
@@ -73,7 +72,7 @@ pub fn on_enter(state: State) -> State {
 pub fn handle_input(
   state: State,
   data: BitArray,
-) -> #(State, Option(Subject(msg.Update))) {
+) -> #(State, Option(Subject(simulation.Update))) {
   case state {
     FirstIAC(_, _, _, _) -> #(state, None)
     Menu(conn, dim, dir, _) -> {
@@ -122,13 +121,13 @@ pub fn handle_input(
   }
 }
 
-pub fn handle_update(state: State, update: msg.Update) -> State {
+pub fn handle_update(state: State, update: simulation.Update) -> State {
   case state {
     FirstIAC(_, _, _, _) -> state
     Menu(_, _, _, _) -> state
     InWorld(_, _, _, buffer) ->
       case update {
-        msg.RoomDescription(region, name, desc) -> {
+        simulation.RoomDescription(region, name, desc) -> {
           let assert Ok(_) =
             render.room_descripion(state.conn, region, name, desc)
           let assert Ok(_) =
