@@ -1,0 +1,6 @@
+name = "Entrance"
+region = "Gate Research"
+description = "Spawn only"
+
+[exits.west]
+room_id = "ramp-gate-research" # Security Stations
