@@ -56,9 +56,6 @@ pub fn on_enter(state: State) -> State {
     Menu(_, _, _) -> {
       let assert Ok(_) = render.logo(state.conn)
       let assert Ok(_) = render.menu(state.conn)
-      let assert Ok(_) =
-        "\n"
-        |> render.println(state.conn)
 
       state
     }
