@@ -2,7 +2,7 @@ import gleam/bit_array
 import gleam/erlang/process.{type Subject}
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import model/simulation
+import simulation
 import glisten.{type Connection}
 import telnet/render
 import gleam/io

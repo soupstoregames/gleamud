@@ -1,11 +1,10 @@
 import gleam/bytes_builder
-import gleam/bit_array.{to_string}
 import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
 import gleam/option.{type Option, None}
 import glisten.{Packet}
 import telnet/constants
-import model/simulation
+import simulation
 import telnet/game_connection
 
 pub fn start(port: Int, sim_subject: Subject(simulation.Control)) {

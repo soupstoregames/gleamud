@@ -1,7 +1,7 @@
 import gleam/erlang/process
 import gleam/io
 import telnet/server
-import model/simulation
+import simulation
 import repeatedly
 
 pub fn main() {
