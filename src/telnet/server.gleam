@@ -88,10 +88,5 @@ fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
 }
 
 fn handle_input(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
-  case to_string(msg) {
-    Ok(str) -> {
-      process.send(tcp_subject, game_connection.Data(str))
-    }
-    Error(_) -> Nil
-  }
+  process.send(tcp_subject, game_connection.Data(msg))
 }

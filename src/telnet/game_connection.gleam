@@ -1,6 +1,7 @@
 import gleam/erlang/process.{type Subject}
 import gleam/option.{None, Some}
 import gleam/otp/actor
+import gleam/string_builder
 import telnet/states/states
 import model/simulation
 import gleam/function
@@ -9,7 +10,7 @@ import model/sim_messages as msg
 
 pub type Message {
   Dimensions(Int, Int)
-  Data(String)
+  Data(BitArray)
   Update(msg.Update)
 }
 
@@ -41,6 +42,7 @@ pub fn start(
               sim_subject: sim_subject,
               command_subject: None,
             ),
+            buffer: "",
           ),
         ),
         selector,
@@ -57,7 +59,7 @@ fn handle_message(
 ) -> actor.Next(Message, ConnState) {
   case message {
     Dimensions(width, height) -> handle_dimensions(state, width, height)
-    Data(str) -> handle_data(state, str)
+    Data(bits) -> handle_data(state, bits)
     Update(update) -> handle_update(state, update)
   }
 }
@@ -67,8 +69,9 @@ fn handle_dimensions(
   width: Int,
   height: Int,
 ) -> actor.Next(Message, ConnState) {
+  // move this into state
   case state.game_state {
-    states.FirstIAC(conn, _, directory) ->
+    states.FirstIAC(conn, _, directory, buffer) ->
       actor.continue(
         ConnState(
           ..state,
@@ -76,12 +79,13 @@ fn handle_dimensions(
             conn,
             states.ClientDimensions(width, height),
             directory,
+            buffer,
           )
           |> states.on_enter(),
         ),
       )
 
-    states.Menu(conn, _, directory) ->
+    states.Menu(conn, _, directory, buffer) ->
       actor.continue(
         ConnState(
           ..state,
@@ -89,11 +93,12 @@ fn handle_dimensions(
             conn,
             states.ClientDimensions(width, height),
             directory,
+            buffer,
           ),
         ),
       )
 
-    states.InWorld(conn, _, directory) ->
+    states.InWorld(conn, _, directory, buffer) ->
       actor.continue(
         ConnState(
           ..state,
@@ -101,16 +106,20 @@ fn handle_dimensions(
             conn,
             states.ClientDimensions(width, height),
             directory,
+            buffer,
           ),
         ),
       )
   }
 }
 
-fn handle_data(state: ConnState, str: String) -> actor.Next(Message, ConnState) {
+fn handle_data(
+  state: ConnState,
+  data: BitArray,
+) -> actor.Next(Message, ConnState) {
   let #(new_state, command_subject) =
     state.game_state
-    |> states.handle_input(str)
+    |> states.handle_input(data)
 
   case command_subject {
     Some(update_subject) ->

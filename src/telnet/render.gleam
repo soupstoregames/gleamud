@@ -6,6 +6,7 @@ import gleam/string
 import gleam/bytes_builder
 import glisten.{type Connection}
 import telnet/states/menu
+import telnet/constants
 
 pub fn logo(conn: Connection(_user_message)) {
   menu.logo
@@ -19,6 +20,14 @@ pub fn menu(conn: Connection(_user_message)) {
   menu.menu
   |> center(80)
   |> println(conn)
+}
+
+pub fn prompt(buffer: String, conn: Connection(_user_message)) {
+  print("> " <> buffer, conn)
+}
+
+pub fn backspace(conn: Connection(_user_message)) {
+  glisten.send(conn, bytes_builder.from_bit_array(constants.seq_delete))
 }
 
 pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
