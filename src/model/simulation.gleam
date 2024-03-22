@@ -1,16 +1,17 @@
 import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
-import gleam/io
 import gleam/list
 import gleam/otp/actor
+import data/core
+import data/entity as dataentity
+import data/prefabs
 import data/world
 import model/region
 import model/sim_messages as msg
-import model/entity
 
 /// Control message are sent by top level actors to control the sim directly
 pub type Control {
-  JoinAsGuest(Subject(entity.Update))
+  JoinAsGuest(Subject(msg.Update))
   Tick
   Shutdown
 }
@@ -85,8 +86,14 @@ fn handle_message(
   state: SimState,
 ) -> actor.Next(SimMessage, SimState) {
   case message {
-    Control(JoinAsGuest(update_channel)) -> {
-      io.debug("continue as guest")
+    Control(JoinAsGuest(update_subject)) -> {
+      let location = core.Location("testregion", "testroom")
+      let entity = dataentity.Entity(0, prefabs.create_guest_player())
+      let assert Ok(region_subject) = dict.get(state.regions, location.region)
+      process.send(
+        region_subject,
+        msg.SpawnActorEntity(entity, location, update_subject),
+      )
       actor.continue(state)
     }
 

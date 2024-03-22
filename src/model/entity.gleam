@@ -3,31 +3,22 @@ import gleam/otp/actor
 import model/sim_messages as msg
 import data/entity as dataentity
 
-/// Commands are sent from game connections to entities
-pub type Command {
-  Look
-}
-
-/// Updates are sent from entities to game connections
-pub type Update {
-  CommandSubject(Subject(Command))
-  // RoomDescription
-}
-
 type Message {
   SimMessage(msg.Message)
-  CommandMessage(Command)
+  CommandMessage(msg.Command)
 }
 
 type EntityState {
   EntityState(
     entity: dataentity.Entity,
+    // the subject for this entity
+    entity_subject: Subject(msg.Message),
     // the subject to talk to the parent room
     room_subject: Subject(msg.Message),
     // sent to game controllers when they take control of this entity
-    command_subject: Subject(Command),
+    command_subject: Subject(msg.Command),
     // used for sending updates to game controllers
-    update_subject: Subject(Update),
+    update_subject: Subject(msg.Update),
   )
 }
 
@@ -38,10 +29,10 @@ type EntityState {
 // and return
 // - the entity_subject to send message to the entity
 // 
-pub fn new(
+pub fn start(
   entity: dataentity.Entity,
   room_subject: Subject(msg.Message),
-  update_subject: Subject(Update),
+  update_subject: Subject(msg.Update),
 ) -> Result(Subject(msg.Message), actor.StartError) {
   let parent_subject = process.new_subject()
 
@@ -54,7 +45,10 @@ pub fn new(
 
         // send the command subject over the update subject to the game connection
         let command_subject = process.new_subject()
-        process.send(update_subject, CommandSubject(command_subject))
+        process.send(update_subject, msg.CommandSubject(command_subject))
+
+        // request initial room description
+        process.send(room_subject, msg.RequestRoomDescription(entity_subject))
 
         // 
         let selector =
@@ -63,7 +57,13 @@ pub fn new(
           |> process.selecting(command_subject, fn(msg) { CommandMessage(msg) })
 
         actor.Ready(
-          EntityState(entity, room_subject, command_subject, update_subject),
+          EntityState(
+            entity,
+            entity_subject,
+            room_subject,
+            command_subject,
+            update_subject,
+          ),
           selector,
         )
       },
@@ -85,6 +85,13 @@ fn handle_message(
 ) -> actor.Next(Message, EntityState) {
   case message {
     SimMessage(msg.Tick) -> actor.continue(state)
-    _ -> todo
+    SimMessage(msg.ReplyRoomDescription(region, name, description)) -> {
+      process.send(
+        state.update_subject,
+        msg.RoomDescription(region, name, description),
+      )
+      actor.continue(state)
+    }
+    _ -> actor.continue(state)
   }
 }

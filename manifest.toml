@@ -2,6 +2,7 @@
 # You typically do not need to edit this file
 
 packages = [
+  { name = "chromatic", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "chromatic", source = "hex", outer_checksum = "BEFE2D9BF1ABD369CCB5876A3A7814B0D7F2D307068D6E9755EAE497BEFE7B9E" },
   { name = "gleam_erlang", version = "0.24.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_erlang", source = "hex", outer_checksum = "26BDB52E61889F56A291CB34167315780EE4AA20961917314446542C90D1C1A0" },
   { name = "gleam_otp", version = "0.10.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "gleam_otp", source = "hex", outer_checksum = "0B04FE915ACECE539B317F9652CAADBBC0F000184D586AAAF2D94C100945D72B" },
   { name = "gleam_stdlib", version = "0.36.0", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "C0D14D807FEC6F8A08A7C9EF8DFDE6AE5C10E40E21325B2B29365965D82EB3D4" },
@@ -11,9 +12,10 @@ packages = [
 ]
 
 [requirements]
+chromatic = { version = "~> 1.0"}
 gleam_erlang = { version = "~> 0.24" }
 gleam_otp = { version = "~> 0.10" }
 gleam_stdlib = { version = "~> 0.34 or ~> 1.0" }
 gleeunit = { version = "~> 1.0" }
 glisten = { path = "../glisten" }
-repeatedly = { version = "~> 2.1"}
+repeatedly = { version = "~> 2.1" }

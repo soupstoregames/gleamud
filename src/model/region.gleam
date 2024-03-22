@@ -6,7 +6,6 @@ import gleam/otp/actor
 import data/world
 import model/room
 import model/sim_messages as msg
-import gleam/io
 
 type RegionState {
   RegionState(
@@ -73,5 +72,14 @@ fn handle_message(
 
       actor.continue(state)
     }
+    msg.SpawnActorEntity(entity, location, update_subject) -> {
+      let assert Ok(room_subject) = dict.get(state.rooms, location.room)
+      process.send(
+        room_subject,
+        msg.SpawnActorEntity(entity, location, update_subject),
+      )
+      actor.continue(state)
+    }
+    _ -> actor.continue(state)
   }
 }

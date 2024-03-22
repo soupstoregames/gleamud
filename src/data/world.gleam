@@ -8,6 +8,7 @@ pub type DataError {
 
 pub type RoomTemplate {
   RoomTemplate(
+    region: String,
     name: String,
     description: String,
     exits: Dict(core.Direction, core.Location),
@@ -42,8 +43,9 @@ pub fn load_world() -> Result(WorldTemplate, DataError) {
             |> add_room(
               "testroom",
               RoomTemplate(
+                region: "Test Region",
                 name: "Test Room",
-                description: "An empty test room",
+                description: "An empty test room. A black void of nothingness. You get the odd feeling there are actors here, communicating somehow. Some kind of play, perhaps?",
                 exits: dict.new(),
               ),
             ),
