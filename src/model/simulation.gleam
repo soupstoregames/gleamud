@@ -87,7 +87,7 @@ fn handle_message(
 ) -> actor.Next(SimMessage, SimState) {
   case message {
     Control(JoinAsGuest(update_subject)) -> {
-      let location = core.Location("testregion", "testroom")
+      let location = core.Location("testregion", "ramp-gate-research")
       let entity = dataentity.Entity(0, prefabs.create_guest_player())
       let assert Ok(region_subject) = dict.get(state.regions, location.region)
       process.send(
