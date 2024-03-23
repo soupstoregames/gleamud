@@ -214,6 +214,8 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
           state
         }
         simulation.UpdateSayRoom(name, text) -> {
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
           let assert Ok(_) = render.speech(name, text, state.conn)
           let assert Ok(_) = render.prompt(buffer, state.conn)
           state
@@ -229,6 +231,8 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
           state
         }
         simulation.UpdateSayRoom(name, text) -> {
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
           let assert Ok(_) = render.speech(name, text, state.conn)
           let assert Ok(_) = render.prompt_say(buffer, state.conn)
           state
