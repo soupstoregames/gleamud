@@ -120,7 +120,7 @@ pub fn load_world() -> Result(WorldTemplate, DataError) {
         |> add_region(
           "testregion",
           RegionTemplate(name: "Test Region", rooms: dict.new())
-            |> add_room("ramp-gate-research"),
+            |> add_room("testing-room"),
         ),
       )
     })

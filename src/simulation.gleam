@@ -94,7 +94,7 @@ pub fn start() -> Result(Subject(Control), actor.StartError) {
       loop: fn(message, state) -> actor.Next(SimMessage, SimState) {
         case message {
           Control(JoinAsGuest(update_subject)) -> {
-            let location = core.Location("testregion", "ramp-gate-research")
+            let location = core.Location("testregion", "testing-room")
             let entity =
               dataentity.Entity(state.next_id, prefabs.create_guest_player())
             let assert Ok(region_subject) =
