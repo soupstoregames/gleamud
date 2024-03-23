@@ -86,6 +86,9 @@ fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
   }
 }
 
+import gleam/io
+
 fn handle_input(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
+  io.debug(msg)
   process.send(tcp_subject, game_connection.Data(msg))
 }

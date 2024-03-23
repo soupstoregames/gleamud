@@ -14,13 +14,13 @@ version = "1.0.0"
 
 [dependencies]
 gleam_stdlib = "~> 0.34 or ~> 1.0"
-glisten = { path = "../glisten" }
 gleam_otp = "~> 0.10"
 gleam_erlang = "~> 0.24"
 repeatedly = "~> 2.1"
 chromatic = "~> 1.0"
 tom = "~> 0.3"
 simplifile = "~> 1.5"
+glisten = "~> 2.0"
 
 [dev-dependencies]
 gleeunit = "~> 1.0"

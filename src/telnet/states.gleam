@@ -1,5 +1,6 @@
 import gleam/bit_array
 import gleam/erlang/process.{type Subject}
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import simulation
@@ -102,14 +103,17 @@ pub fn handle_input(
         <<13:8, 0:8>> -> {
           let assert Ok(_) = render.println("", conn)
           let assert Some(command_subject) = state.directory.command_subject
-          let command = parse_command(state.buffer)
-          case command {
-            Some(com) -> {
+          case parse_command(state.buffer) {
+            Ok(com) -> {
               process.send(command_subject, com)
+            }
+            Error(UnknownCommand) -> {
+              let assert Ok(_) = render.error("Huh?", state.conn)
+              let assert Ok(_) = render.prompt("", conn)
               Nil
             }
-            None -> {
-              let assert Ok(_) = render.error("Huh?", state.conn)
+            Error(SayWhat) -> {
+              let assert Ok(_) = render.error("Say what?", state.conn)
               let assert Ok(_) = render.prompt("", conn)
               Nil
             }
@@ -149,10 +153,20 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
   }
 }
 
-fn parse_command(str: String) -> Option(simulation.Command) {
+type ParseCommandError {
+  UnknownCommand
+  SayWhat
+}
+
+fn parse_command(str: String) -> Result(simulation.Command, ParseCommandError) {
   case string.split(string.reverse(string.trim(str)), " ") {
-    ["look", ..] -> Some(simulation.CommandLook)
-    ["say", ..rest] -> Some(simulation.CommandSayRoom(string.join(rest, " ")))
-    _ -> None
+    ["look", ..] -> Ok(simulation.CommandLook)
+    ["say", ..rest] -> {
+      case list.length(rest) {
+        0 -> Error(SayWhat)
+        _ -> Ok(simulation.CommandSayRoom(string.join(rest, " ")))
+      }
+    }
+    _ -> Error(UnknownCommand)
   }
 }

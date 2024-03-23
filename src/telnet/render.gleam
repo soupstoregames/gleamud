@@ -112,6 +112,14 @@ fn center(str: String, width: Int) -> String {
   }
 }
 
+// fn wrap(str: String, width: Int) -> String {
+//   str
+//   |> string.split("\n")
+//   |> list.fold([], fn(lines, line) { todo })
+//   |> string.join("\n")
+// }
+
+// be sure to call this after wrap
 fn insert_carriage_returns(str: String) -> String {
   string.replace(str, "\n", "\n\r")
 }
