@@ -1,0 +1,24 @@
+# fly.toml app configuration file generated for gleamud on 2024-03-23T18:43:03Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'gleamud'
+primary_region = 'lhr'
+
+[build]
+
+[deploy]
+strategy = "immediate"
+
+[[services]]
+internal_port = 3000
+protocol = "tcp"
+
+[[services.ports]]
+port = 3000
+
+[[vm]]
+cpus = 1
+memory = "256mb"
+cpu_kind = "shared"

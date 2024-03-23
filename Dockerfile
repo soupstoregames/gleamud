@@ -3,16 +3,17 @@ FROM ghcr.io/gleam-lang/gleam:v1.0.0-erlang-alpine
 # Add project code
 COPY . /build/
 
-# Add data
-COPY ./data /data
-
 # Compile the project
 RUN cd /build \
     && gleam export erlang-shipment \
     && mv build/erlang-shipment /app \
     && rm -r /build
 
+# Add data
+COPY ./data /app/data
+
 # Run the server
 WORKDIR /app
 ENTRYPOINT ["/app/entrypoint.sh"]
+EXPOSE 3000
 CMD ["run"]
