@@ -42,12 +42,12 @@ pub fn menu(conn: Connection(_user_message)) {
 }
 
 pub fn prompt(buffer: String, conn: Connection(_user_message)) {
-  print("> " <> buffer, conn)
+  print("> " <> string.reverse(buffer), conn)
 }
 
-pub fn huh(conn: Connection(_user_message)) {
+pub fn error(str: String, conn: Connection(_user_message)) {
   println(
-    "Huh?"
+    str
       |> red,
     conn,
   )
@@ -69,7 +69,7 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
 }
 
 pub fn speech(name: String, text: String, conn: Connection(_user_message)) {
-  name
+  { "\n\r" <> name }
   |> bold
   |> string.append(" says: ")
   |> string.append(text)

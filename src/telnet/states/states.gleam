@@ -109,7 +109,8 @@ pub fn handle_input(
               Nil
             }
             None -> {
-              let assert Ok(_) = render.huh(state.conn)
+              let assert Ok(_) = render.error("Huh?", state.conn)
+              let assert Ok(_) = render.prompt("", conn)
               Nil
             }
           }
@@ -118,7 +119,7 @@ pub fn handle_input(
         <<n:8>> if n >= 32 && n <= 126 -> {
           let assert Ok(msg) = bit_array.to_string(data)
           let assert Ok(_) = render.print(msg, conn)
-          #(InWorld(conn, dim, dir, msg <> buffer), None)
+          #(InWorld(conn, dim, dir, string.trim_right(msg <> buffer)), None)
         }
         _ -> #(state, None)
       }
@@ -135,22 +136,12 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
         simulation.UpdateRoomDescription(region, name, desc) -> {
           let assert Ok(_) =
             render.room_descripion(state.conn, region, name, desc)
-          let assert Ok(_) =
-            render.prompt(
-              buffer
-                |> string.reverse,
-              state.conn,
-            )
+          let assert Ok(_) = render.prompt(buffer, state.conn)
           state
         }
         simulation.UpdateSayRoom(name, text) -> {
           let assert Ok(_) = render.speech(name, text, state.conn)
-          let assert Ok(_) =
-            render.prompt(
-              buffer
-                |> string.reverse,
-              state.conn,
-            )
+          let assert Ok(_) = render.prompt(buffer, state.conn)
           state
         }
         _ -> state
