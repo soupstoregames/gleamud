@@ -2,6 +2,8 @@ import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
 import gleam/function
 import gleam/list
+import gleam/int
+import gleam/option.{None, Some}
 import gleam/otp/actor
 import data/core
 import data/entity as dataentity
@@ -17,13 +19,15 @@ pub type Control {
 
 /// Commands are sent from game connections to entities
 pub type Command {
-  Look
+  CommandLook
+  CommandSayRoom(text: String)
 }
 
 /// Updates are sent from entities to game connections
 pub type Update {
-  CommandSubject(Subject(Command))
-  RoomDescription(region: String, name: String, description: String)
+  UpdateCommandSubject(Subject(Command))
+  UpdateRoomDescription(region: String, name: String, description: String)
+  UpdateSayRoom(name: String, text: String)
 }
 
 type SimMessage {
@@ -31,8 +35,19 @@ type SimMessage {
   Sim(Internal)
 }
 
+type Internal {
+  TTick
+  SpawnActorEntity(dataentity.Entity, core.Location, Subject(Update))
+
+  QueryUpdateRoomDescription(Subject(Internal))
+  ReplyUpdateRoomDescription(region: String, name: String, description: String)
+
+  RoomSay(name: String, text: String)
+}
+
 type SimState {
   SimState(
+    next_id: Int,
     world_template: world.WorldTemplate,
     sim_subject: Subject(Internal),
     regions: Dict(String, Subject(Internal)),
@@ -73,21 +88,22 @@ pub fn start() -> Result(Subject(Control), actor.StartError) {
           |> process.selecting(control_subject, fn(msg) { Control(msg) })
           |> process.selecting(sim_subject, fn(msg) { Sim(msg) })
 
-        actor.Ready(SimState(world, sim_subject, regions), selector)
+        actor.Ready(SimState(0, world, sim_subject, regions), selector)
       },
       init_timeout: 1000,
       loop: fn(message, state) -> actor.Next(SimMessage, SimState) {
         case message {
           Control(JoinAsGuest(update_subject)) -> {
             let location = core.Location("testregion", "ramp-gate-research")
-            let entity = dataentity.Entity(0, prefabs.create_guest_player())
+            let entity =
+              dataentity.Entity(state.next_id, prefabs.create_guest_player())
             let assert Ok(region_subject) =
               dict.get(state.regions, location.region)
             process.send(
               region_subject,
               SpawnActorEntity(entity, location, update_subject),
             )
-            actor.continue(state)
+            actor.continue(SimState(..state, next_id: state.next_id + 1))
           }
 
           Control(Tick) -> {
@@ -234,15 +250,21 @@ fn start_room(
               ),
             )
           }
-          RequestRoomDescription(reply) -> {
+          QueryUpdateRoomDescription(reply) -> {
             process.send(
               reply,
-              ReplyRoomDescription(
+              ReplyUpdateRoomDescription(
                 state.template.region,
                 state.template.name,
                 state.template.description,
               ),
             )
+            actor.continue(state)
+          }
+          RoomSay(name, text) -> {
+            state.entities
+            |> dict.to_list()
+            |> list.each(fn(kv) { process.send(kv.1, RoomSay(name, text)) })
             actor.continue(state)
           }
           _ -> actor.continue(state)
@@ -301,10 +323,10 @@ fn start_entity(
 
         // send the command subject over the update subject to the game connection
         let command_subject = process.new_subject()
-        process.send(update_subject, CommandSubject(command_subject))
+        process.send(update_subject, UpdateCommandSubject(command_subject))
 
         // request initial room description
-        process.send(room_subject, RequestRoomDescription(entity_subject))
+        process.send(room_subject, QueryUpdateRoomDescription(entity_subject))
 
         // 
         let selector =
@@ -327,11 +349,33 @@ fn start_entity(
       loop: fn(message, state) -> actor.Next(EntityMessage, EntityState) {
         case message {
           InternalMessage(TTick) -> actor.continue(state)
-          InternalMessage(ReplyRoomDescription(region, name, description)) -> {
+          InternalMessage(ReplyUpdateRoomDescription(region, name, description)) -> {
             process.send(
               state.update_subject,
-              RoomDescription(region, name, description),
+              UpdateRoomDescription(region, name, description),
             )
+            actor.continue(state)
+          }
+          InternalMessage(RoomSay(name, text)) -> {
+            process.send(state.update_subject, UpdateSayRoom(name, text))
+            actor.continue(state)
+          }
+          CommandMessage(CommandLook) -> {
+            process.send(
+              room_subject,
+              QueryUpdateRoomDescription(state.entity_subject),
+            )
+            actor.continue(state)
+          }
+          CommandMessage(CommandSayRoom(text)) -> {
+            let query =
+              state.entity
+              |> dataentity.query(dataentity.QueryName(None))
+            let name = case query {
+              dataentity.QueryName(Some(name)) -> name
+              _ -> "Unknown"
+            }
+            process.send(room_subject, RoomSay(name, text))
             actor.continue(state)
           }
           _ -> actor.continue(state)
@@ -345,12 +389,4 @@ fn start_entity(
     Ok(_) -> Ok(entity_subject)
     Error(err) -> Error(err)
   }
-}
-
-type Internal {
-  TTick
-  SpawnActorEntity(dataentity.Entity, core.Location, Subject(Update))
-
-  RequestRoomDescription(Subject(Internal))
-  ReplyRoomDescription(region: String, name: String, description: String)
 }

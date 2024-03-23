@@ -5,7 +5,6 @@ import gleam/string
 import simulation
 import glisten.{type Connection}
 import telnet/render
-import gleam/io
 
 pub type State {
   FirstIAC(
@@ -90,30 +89,36 @@ pub fn handle_input(
       }
     }
     InWorld(conn, dim, dir, buffer) -> {
-      case bit_array.byte_size(data) {
-        2 -> {
-          let assert Ok(msg) = bit_array.to_string(data)
-          io.debug(msg)
-          #(state, None)
-        }
-        1 -> {
-          case data {
-            <<127>> -> {
-              case string.length(buffer) {
-                0 -> #(state, None)
-                _ -> {
-                  let assert Ok(_) = render.backspace(state.conn)
-                  #(InWorld(conn, dim, dir, string.drop_left(buffer, 1)), None)
-                }
-              }
+      case data {
+        <<127>> -> {
+          case string.length(buffer) {
+            0 -> #(state, None)
+            _ -> {
+              let assert Ok(_) = render.backspace(state.conn)
+              #(InWorld(conn, dim, dir, string.drop_left(buffer, 1)), None)
             }
-            <<n:8>> if n >= 32 && n <= 126 -> {
-              let assert Ok(msg) = bit_array.to_string(data)
-              let assert Ok(_) = render.print(msg, conn)
-              #(InWorld(conn, dim, dir, msg <> buffer), None)
-            }
-            _ -> #(state, None)
           }
+        }
+        <<13:8, 0:8>> -> {
+          let assert Ok(_) = render.println("", conn)
+          let assert Some(command_subject) = state.directory.command_subject
+          let command = parse_command(state.buffer)
+          case command {
+            Some(com) -> {
+              process.send(command_subject, com)
+              Nil
+            }
+            None -> {
+              let assert Ok(_) = render.huh(state.conn)
+              Nil
+            }
+          }
+          #(InWorld(conn, dim, dir, ""), None)
+        }
+        <<n:8>> if n >= 32 && n <= 126 -> {
+          let assert Ok(msg) = bit_array.to_string(data)
+          let assert Ok(_) = render.print(msg, conn)
+          #(InWorld(conn, dim, dir, msg <> buffer), None)
         }
         _ -> #(state, None)
       }
@@ -127,7 +132,7 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
     Menu(_, _, _, _) -> state
     InWorld(_, _, _, buffer) ->
       case update {
-        simulation.RoomDescription(region, name, desc) -> {
+        simulation.UpdateRoomDescription(region, name, desc) -> {
           let assert Ok(_) =
             render.room_descripion(state.conn, region, name, desc)
           let assert Ok(_) =
@@ -138,7 +143,25 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
             )
           state
         }
+        simulation.UpdateSayRoom(name, text) -> {
+          let assert Ok(_) = render.speech(name, text, state.conn)
+          let assert Ok(_) =
+            render.prompt(
+              buffer
+                |> string.reverse,
+              state.conn,
+            )
+          state
+        }
         _ -> state
       }
+  }
+}
+
+fn parse_command(str: String) -> Option(simulation.Command) {
+  case string.split(string.reverse(string.trim(str)), " ") {
+    ["look", ..] -> Some(simulation.CommandLook)
+    ["say", ..rest] -> Some(simulation.CommandSayRoom(string.join(rest, " ")))
+    _ -> None
   }
 }

@@ -1,4 +1,4 @@
-import chromatic.{bold, green, magenta}
+import chromatic.{bold, green, magenta, red}
 import gleam/int
 import gleam/list
 import gleam/result
@@ -7,6 +7,25 @@ import gleam/bytes_builder
 import glisten.{type Connection}
 import telnet/states/menu
 import telnet/constants
+
+pub fn print(str: String, conn: Connection(_user_message)) {
+  glisten.send(
+    conn,
+    str
+      |> insert_carriage_returns
+      |> bytes_builder.from_string,
+  )
+}
+
+pub fn println(str: String, conn: Connection(_user_message)) {
+  glisten.send(
+    conn,
+    str
+      |> string.append("\n")
+      |> insert_carriage_returns
+      |> bytes_builder.from_string,
+  )
+}
 
 pub fn logo(conn: Connection(_user_message)) {
   menu.logo
@@ -26,6 +45,14 @@ pub fn prompt(buffer: String, conn: Connection(_user_message)) {
   print("> " <> buffer, conn)
 }
 
+pub fn huh(conn: Connection(_user_message)) {
+  println(
+    "Huh?"
+      |> red,
+    conn,
+  )
+}
+
 pub fn backspace(conn: Connection(_user_message)) {
   glisten.send(conn, bytes_builder.from_bit_array(constants.seq_delete))
 }
@@ -41,23 +68,12 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
   |> println(conn)
 }
 
-pub fn print(str: String, conn: Connection(_user_message)) {
-  glisten.send(
-    conn,
-    str
-      |> insert_carriage_returns
-      |> bytes_builder.from_string,
-  )
-}
-
-fn println(str: String, conn: Connection(_user_message)) {
-  glisten.send(
-    conn,
-    str
-      |> string.append("\n")
-      |> insert_carriage_returns
-      |> bytes_builder.from_string,
-  )
+pub fn speech(name: String, text: String, conn: Connection(_user_message)) {
+  name
+  |> bold
+  |> string.append(" says: ")
+  |> string.append(text)
+  |> println(conn)
 }
 
 fn center(str: String, width: Int) -> String {

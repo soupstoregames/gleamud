@@ -136,14 +136,14 @@ fn handle_update(
   update: simulation.Update,
 ) -> actor.Next(Message, ConnState) {
   case update {
-    simulation.CommandSubject(subject) ->
+    simulation.UpdateCommandSubject(subject) ->
       actor.continue(
         ConnState(
           ..state,
           game_state: states.with_command_subject(state.game_state, subject),
         ),
       )
-    simulation.RoomDescription(_, _, _) -> {
+    _ -> {
       actor.continue(
         ConnState(
           ..state,
