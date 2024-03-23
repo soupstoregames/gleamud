@@ -2,7 +2,6 @@ import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
 import gleam/function
 import gleam/list
-import gleam/int
 import gleam/option.{None, Some}
 import gleam/otp/actor
 import data/core
@@ -39,10 +38,11 @@ type Internal {
   TTick
   SpawnActorEntity(dataentity.Entity, core.Location, Subject(Update))
 
-  QueryUpdateRoomDescription(Subject(Internal))
-  ReplyUpdateRoomDescription(region: String, name: String, description: String)
+  RoomDescriptionUp(Subject(Internal))
+  RoomDescriptionDown(region: String, name: String, description: String)
 
-  RoomSay(name: String, text: String)
+  RoomSayUp(name: String, text: String)
+  RoomSayDown(name: String, text: String)
 }
 
 type SimState {
@@ -250,10 +250,10 @@ fn start_room(
               ),
             )
           }
-          QueryUpdateRoomDescription(reply) -> {
+          RoomDescriptionUp(reply) -> {
             process.send(
               reply,
-              ReplyUpdateRoomDescription(
+              RoomDescriptionDown(
                 state.template.region,
                 state.template.name,
                 state.template.description,
@@ -261,10 +261,10 @@ fn start_room(
             )
             actor.continue(state)
           }
-          RoomSay(name, text) -> {
+          RoomSayUp(name, text) -> {
             state.entities
             |> dict.to_list()
-            |> list.each(fn(kv) { process.send(kv.1, RoomSay(name, text)) })
+            |> list.each(fn(kv) { process.send(kv.1, RoomSayDown(name, text)) })
             actor.continue(state)
           }
           _ -> actor.continue(state)
@@ -326,7 +326,7 @@ fn start_entity(
         process.send(update_subject, UpdateCommandSubject(command_subject))
 
         // request initial room description
-        process.send(room_subject, QueryUpdateRoomDescription(entity_subject))
+        process.send(room_subject, RoomDescriptionUp(entity_subject))
 
         // 
         let selector =
@@ -349,22 +349,19 @@ fn start_entity(
       loop: fn(message, state) -> actor.Next(EntityMessage, EntityState) {
         case message {
           InternalMessage(TTick) -> actor.continue(state)
-          InternalMessage(ReplyUpdateRoomDescription(region, name, description)) -> {
+          InternalMessage(RoomDescriptionDown(region, name, description)) -> {
             process.send(
               state.update_subject,
               UpdateRoomDescription(region, name, description),
             )
             actor.continue(state)
           }
-          InternalMessage(RoomSay(name, text)) -> {
+          InternalMessage(RoomSayDown(name, text)) -> {
             process.send(state.update_subject, UpdateSayRoom(name, text))
             actor.continue(state)
           }
           CommandMessage(CommandLook) -> {
-            process.send(
-              room_subject,
-              QueryUpdateRoomDescription(state.entity_subject),
-            )
+            process.send(room_subject, RoomDescriptionUp(state.entity_subject))
             actor.continue(state)
           }
           CommandMessage(CommandSayRoom(text)) -> {
@@ -375,7 +372,7 @@ fn start_entity(
               dataentity.QueryName(Some(name)) -> name
               _ -> "Unknown"
             }
-            process.send(room_subject, RoomSay(name, text))
+            process.send(room_subject, RoomSayUp(name, text))
             actor.continue(state)
           }
           _ -> actor.continue(state)
