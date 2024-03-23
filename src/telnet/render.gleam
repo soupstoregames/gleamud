@@ -94,8 +94,9 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
 pub fn speech(name: String, text: String, conn: Connection(_user_message)) {
   { "\r" <> name }
   |> bold
-  |> string.append(" says: ")
+  |> string.append(" says \"")
   |> string.append(text)
+  |> string.append("\"")
   |> println(conn)
 }
 
