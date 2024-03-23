@@ -108,6 +108,19 @@ fn handle_dimensions(
           ),
         ),
       )
+
+    states.RoomSay(conn, _, directory, buffer) ->
+      actor.continue(
+        ConnState(
+          ..state,
+          game_state: states.RoomSay(
+            conn,
+            states.ClientDimensions(width, height),
+            directory,
+            buffer,
+          ),
+        ),
+      )
   }
 }
 

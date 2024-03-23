@@ -60,6 +60,14 @@ pub fn prompt(buffer: String, conn: Connection(_user_message)) {
   print("> " <> string.reverse(buffer), conn)
 }
 
+pub fn prompt_say(buffer: String, conn: Connection(_user_message)) {
+  print("say> " <> string.reverse(buffer), conn)
+}
+
+pub fn erase_line(length, conn: Connection(_user_message)) {
+  print("\r" <> string.repeat(" ", length) <> "\r", conn)
+}
+
 pub fn error(str: String, conn: Connection(_user_message)) {
   println(
     str
@@ -84,7 +92,7 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
 }
 
 pub fn speech(name: String, text: String, conn: Connection(_user_message)) {
-  { "\n\r" <> name }
+  { "\r" <> name }
   |> bold
   |> string.append(" says: ")
   |> string.append(text)
