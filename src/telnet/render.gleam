@@ -8,19 +8,24 @@ import glisten.{type Connection}
 import telnet/constants
 
 pub const logo_str = "
+
+
+
         .__                                  .___
    ____ |  |   ____ _____    _____  __ __  __| _/
   / ___\\|  | _/ __ \\\\__  \\  /     \\|  |  \\/ __ | 
  / /_/  >  |_\\  ___/ / __ \\|  Y Y  \\  |  / /_/ | 
  \\___  /|____/\\___  >____  /__|_|  /____/\\____ | 
 /_____/           \\/     \\/      \\/           \\/ 
-      
+
 "
 
 const menu_str = "
 1. Login (TODO)
 2. Register (TODO)
 3. Join as a guest
+
+
 "
 
 pub fn print(str: String, conn: Connection(_user_message)) {
@@ -42,17 +47,17 @@ pub fn println(str: String, conn: Connection(_user_message)) {
   )
 }
 
-pub fn logo(conn: Connection(_user_message)) {
+pub fn logo(width: Int, conn: Connection(_user_message)) {
   logo_str
-  |> center(80)
+  |> center(width)
   |> magenta
   |> bold
   |> println(conn)
 }
 
-pub fn menu(conn: Connection(_user_message)) {
+pub fn menu(width: Int, conn: Connection(_user_message)) {
   menu_str
-  |> center(80)
+  |> center(width)
   |> println(conn)
 }
 

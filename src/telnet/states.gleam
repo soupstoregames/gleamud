@@ -72,9 +72,9 @@ pub fn with_command_subject(
 pub fn on_enter(state: State) -> State {
   case state {
     FirstIAC(_, _, _, _) -> state
-    Menu(_, _, _, _) -> {
-      let assert Ok(_) = render.logo(state.conn)
-      let assert Ok(_) = render.menu(state.conn)
+    Menu(_, dim, _, _) -> {
+      let assert Ok(_) = render.logo(dim.width, state.conn)
+      let assert Ok(_) = render.menu(dim.width, state.conn)
 
       state
     }
