@@ -5,8 +5,23 @@ import gleam/result
 import gleam/string
 import gleam/bytes_builder
 import glisten.{type Connection}
-import telnet/states/menu
 import telnet/constants
+
+pub const logo_str = "
+        .__                                  .___
+   ____ |  |   ____ _____    _____  __ __  __| _/
+  / ___\\|  | _/ __ \\\\__  \\  /     \\|  |  \\/ __ | 
+ / /_/  >  |_\\  ___/ / __ \\|  Y Y  \\  |  / /_/ | 
+ \\___  /|____/\\___  >____  /__|_|  /____/\\____ | 
+/_____/           \\/     \\/      \\/           \\/ 
+      
+"
+
+const menu_str = "
+1. Login (TODO)
+2. Register (TODO)
+3. Join as a guest
+"
 
 pub fn print(str: String, conn: Connection(_user_message)) {
   glisten.send(
@@ -28,7 +43,7 @@ pub fn println(str: String, conn: Connection(_user_message)) {
 }
 
 pub fn logo(conn: Connection(_user_message)) {
-  menu.logo
+  logo_str
   |> center(80)
   |> magenta
   |> bold
@@ -36,7 +51,7 @@ pub fn logo(conn: Connection(_user_message)) {
 }
 
 pub fn menu(conn: Connection(_user_message)) {
-  menu.menu
+  menu_str
   |> center(80)
   |> println(conn)
 }

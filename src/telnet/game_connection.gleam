@@ -1,7 +1,7 @@
 import gleam/erlang/process.{type Subject}
 import gleam/option.{None, Some}
 import gleam/otp/actor
-import telnet/states/states
+import telnet/states
 import simulation
 import gleam/function
 import glisten
