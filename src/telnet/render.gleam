@@ -98,17 +98,17 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
 
 pub fn player_spawned(name: String, conn: Connection(_user_message)) {
   name
+  |> string.append(" blinks into existance.")
   |> bold
   |> bright_blue
-  |> string.append(" blinks into existance.")
   |> println(conn)
 }
 
 pub fn player_quit(name: String, conn: Connection(_user_message)) {
   name
+  |> string.append(" vanishes into the ether.")
   |> bold
   |> bright_blue
-  |> string.append(" vanishes into the ether.")
   |> println(conn)
 }
 
