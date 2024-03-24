@@ -9,9 +9,6 @@ RUN cd /build \
     && mv build/erlang-shipment /app \
     && rm -r /build
 
-# Add data
-COPY ./data /app/data
-
 # Run the server
 WORKDIR /app
 ENTRYPOINT ["/app/entrypoint.sh"]
