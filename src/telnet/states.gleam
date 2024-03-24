@@ -5,6 +5,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 import simulation
 import glisten.{type Connection}
+import glisten/transport
 import telnet/render
 
 pub type State {
@@ -102,8 +103,7 @@ pub fn handle_input(
             state.directory.sim_subject,
             simulation.JoinAsGuest(update_subject),
           )
-          // temp rinse
-          #(RoomSay(conn, dim, dir, ""), Some(update_subject))
+          #(InWorld(conn, dim, dir, ""), Some(update_subject))
         }
         _ -> #(state, None)
       }
@@ -132,6 +132,12 @@ pub fn handle_input(
             _ as str -> {
               let assert Ok(_) = render.println("", conn)
               case parse_command(str) {
+                Ok(simulation.CommandQuit as com) -> {
+                  let assert Ok(_) =
+                    transport.close(state.conn.transport, state.conn.socket)
+                  process.send(command_subject, com)
+                  Nil
+                }
                 Ok(com) -> {
                   process.send(command_subject, com)
                 }
@@ -205,40 +211,59 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
   case state {
     FirstIAC(_, _, _, _) -> state
     Menu(_, _, _, _) -> state
-    InWorld(_, _, _, buffer) ->
+    InWorld(_, _, _, buffer) -> {
       case update {
         simulation.UpdateRoomDescription(region, name, desc) -> {
           let assert Ok(_) =
             render.room_descripion(state.conn, region, name, desc)
-          let assert Ok(_) = render.prompt(buffer, state.conn)
-          state
+        }
+        simulation.UpdatePlayerSpawned(name) -> {
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) = render.player_spawned(name, state.conn)
+        }
+        simulation.UpdatePlayerQuit(name) -> {
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) = render.player_quit(name, state.conn)
         }
         simulation.UpdateSayRoom(name, text) -> {
           let assert Ok(_) =
             render.erase_line(state.dimensions.width, state.conn)
           let assert Ok(_) = render.speech(name, text, state.conn)
-          let assert Ok(_) = render.prompt(buffer, state.conn)
-          state
         }
-        _ -> state
+        _ -> Ok(Nil)
       }
-    RoomSay(_, _, _, buffer) ->
+      let assert Ok(_) = render.prompt(buffer, state.conn)
+      state
+    }
+    RoomSay(_, _, _, buffer) -> {
       case update {
         simulation.UpdateRoomDescription(region, name, desc) -> {
           let assert Ok(_) =
             render.room_descripion(state.conn, region, name, desc)
-          let assert Ok(_) = render.prompt_say(buffer, state.conn)
-          state
+        }
+        simulation.UpdatePlayerSpawned(name) -> {
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) = render.player_spawned(name, state.conn)
+        }
+        simulation.UpdatePlayerQuit(name) -> {
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) = render.player_quit(name, state.conn)
         }
         simulation.UpdateSayRoom(name, text) -> {
           let assert Ok(_) =
             render.erase_line(state.dimensions.width, state.conn)
           let assert Ok(_) = render.speech(name, text, state.conn)
-          let assert Ok(_) = render.prompt_say(buffer, state.conn)
-          state
         }
-        _ -> state
+        _ -> Ok(Nil)
       }
+
+      let assert Ok(_) = render.prompt_say(buffer, state.conn)
+      state
+    }
   }
 }
 
@@ -249,6 +274,7 @@ type ParseCommandError {
 
 fn parse_command(str: String) -> Result(simulation.Command, ParseCommandError) {
   case string.split(str, " ") {
+    ["quit", ..] -> Ok(simulation.CommandQuit)
     ["look", ..] -> Ok(simulation.CommandLook)
     ["say", ..rest] -> {
       case list.length(rest) {

@@ -12,5 +12,5 @@ pub type Direction {
 }
 
 pub type Location {
-  Location(region: String, room: String)
+  Location(region: Int, room: Int)
 }

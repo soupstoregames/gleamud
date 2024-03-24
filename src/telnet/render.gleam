@@ -1,4 +1,4 @@
-import chromatic.{bold, green, magenta, red}
+import chromatic.{bold, bright_blue, green, magenta, red}
 import gleam/int
 import gleam/list
 import gleam/result
@@ -96,8 +96,24 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
   |> println(conn)
 }
 
+pub fn player_spawned(name: String, conn: Connection(_user_message)) {
+  name
+  |> bold
+  |> bright_blue
+  |> string.append(" blinks into existance.")
+  |> println(conn)
+}
+
+pub fn player_quit(name: String, conn: Connection(_user_message)) {
+  name
+  |> bold
+  |> bright_blue
+  |> string.append(" vanishes into the ether.")
+  |> println(conn)
+}
+
 pub fn speech(name: String, text: String, conn: Connection(_user_message)) {
-  { "\r" <> name }
+  name
   |> bold
   |> string.append(" says \"")
   |> string.append(text)

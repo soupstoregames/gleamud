@@ -52,7 +52,11 @@ fn handler(msg, state, _conn) {
   actor.continue(state)
 }
 
+import gleam/io
+import gleam/bit_array
+
 fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
+  io.debug(bit_array.base16_encode(msg))
   // this is gross
   case msg {
     <<
@@ -87,5 +91,6 @@ fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
 }
 
 fn handle_input(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
+  io.debug(bit_array.base16_encode(msg))
   process.send(tcp_subject, game_connection.Data(msg))
 }

@@ -18,6 +18,7 @@ pub type Control {
 
 /// Commands are sent from game connections to entities
 pub type Command {
+  CommandQuit
   CommandLook
   CommandSayRoom(text: String)
 }
@@ -26,6 +27,8 @@ pub type Command {
 pub type Update {
   UpdateCommandSubject(Subject(Command))
   UpdateRoomDescription(region: String, name: String, description: String)
+  UpdatePlayerSpawned(name: String)
+  UpdatePlayerQuit(name: String)
   UpdateSayRoom(name: String, text: String)
 }
 
@@ -36,7 +39,10 @@ type SimMessage {
 
 type Internal {
   TTick
+
   SpawnActorEntity(dataentity.Entity, core.Location, Subject(Update))
+  RemovePlayerUp(dataentity.Entity)
+  RemovePlayerDown(String)
 
   RoomDescriptionUp(Subject(Internal))
   RoomDescriptionDown(region: String, name: String, description: String)
@@ -50,13 +56,13 @@ type SimState {
     next_id: Int,
     world_template: world.WorldTemplate,
     sim_subject: Subject(Internal),
-    regions: Dict(String, Subject(Internal)),
+    regions: Dict(Int, Subject(Internal)),
   )
 }
 
 pub fn start() -> Result(Subject(Control), actor.StartError) {
   // data loading
-  let assert Ok(world) = world.load_world()
+  let world = world.load_world()
 
   let parent_subject = process.new_subject()
 
@@ -94,7 +100,7 @@ pub fn start() -> Result(Subject(Control), actor.StartError) {
       loop: fn(message, state) -> actor.Next(SimMessage, SimState) {
         case message {
           Control(JoinAsGuest(update_subject)) -> {
-            let location = core.Location("testregion", "testing-room")
+            let location = core.Location(0, 0)
             let entity =
               dataentity.Entity(state.next_id, prefabs.create_guest_player())
             let assert Ok(region_subject) =
@@ -137,7 +143,7 @@ type RegionState {
   RegionState(
     template: world.RegionTemplate,
     sim_subject: Subject(Internal),
-    rooms: Dict(String, Subject(Internal)),
+    rooms: Dict(Int, Subject(Internal)),
   )
 }
 
@@ -160,7 +166,8 @@ fn start_region(
           template.rooms
           |> dict.to_list()
           |> list.map(fn(kv) {
-            let assert Ok(subject) = start_room(kv.1, region_subject)
+            let assert Ok(subject) =
+              start_room(template.name, kv.1, region_subject)
             #(kv.0, subject)
           })
           |> dict.from_list()
@@ -207,6 +214,7 @@ fn start_region(
 
 type RoomState {
   RoomState(
+    region_name: String,
     template: world.RoomTemplate,
     region_subject: Subject(Internal),
     room_subject: Subject(Internal),
@@ -215,6 +223,7 @@ type RoomState {
 }
 
 fn start_room(
+  region_name: String,
   template: world.RoomTemplate,
   region_subject: Subject(Internal),
 ) -> Result(Subject(Internal), actor.StartError) {
@@ -232,7 +241,13 @@ fn start_room(
           |> process.selecting(room_subject, function.identity)
 
         actor.Ready(
-          RoomState(template, region_subject, room_subject, dict.new()),
+          RoomState(
+            region_name,
+            template,
+            region_subject,
+            room_subject,
+            dict.new(),
+          ),
           selector,
         )
       },
@@ -240,9 +255,16 @@ fn start_room(
       loop: fn(message, state) -> actor.Next(Internal, RoomState) {
         case message {
           TTick -> actor.continue(state)
-          SpawnActorEntity(entity, _, update_subject) -> {
+          SpawnActorEntity(entity, loc, update_subject) -> {
             let assert Ok(ent) =
               start_entity(entity, state.room_subject, update_subject)
+
+            state.entities
+            |> dict.to_list()
+            |> list.each(fn(kv) {
+              process.send(kv.1, SpawnActorEntity(entity, loc, update_subject))
+            })
+
             actor.continue(
               RoomState(
                 ..state,
@@ -250,11 +272,17 @@ fn start_room(
               ),
             )
           }
+          RemovePlayerUp(entity) -> {
+            let name = get_entity_name(entity)
+            let new_entities = dict.delete(state.entities, entity.id)
+            send_to_all(new_entities, RemovePlayerDown(name))
+            actor.continue(RoomState(..state, entities: new_entities))
+          }
           RoomDescriptionUp(reply) -> {
             process.send(
               reply,
               RoomDescriptionDown(
-                state.template.region,
+                state.region_name,
                 state.template.name,
                 state.template.description,
               ),
@@ -262,9 +290,7 @@ fn start_room(
             actor.continue(state)
           }
           RoomSayUp(name, text) -> {
-            state.entities
-            |> dict.to_list()
-            |> list.each(fn(kv) { process.send(kv.1, RoomSayDown(name, text)) })
+            send_to_all(state.entities, RoomSayDown(name, text))
             actor.continue(state)
           }
           _ -> actor.continue(state)
@@ -349,6 +375,15 @@ fn start_entity(
       loop: fn(message, state) -> actor.Next(EntityMessage, EntityState) {
         case message {
           InternalMessage(TTick) -> actor.continue(state)
+          InternalMessage(SpawnActorEntity(entity, _, _)) -> {
+            let name = get_entity_name(entity)
+            process.send(state.update_subject, UpdatePlayerSpawned(name))
+            actor.continue(state)
+          }
+          InternalMessage(RemovePlayerDown(name)) -> {
+            process.send(state.update_subject, UpdatePlayerQuit(name))
+            actor.continue(state)
+          }
           InternalMessage(RoomDescriptionDown(region, name, description)) -> {
             process.send(
               state.update_subject,
@@ -360,18 +395,16 @@ fn start_entity(
             process.send(state.update_subject, UpdateSayRoom(name, text))
             actor.continue(state)
           }
+          CommandMessage(CommandQuit) -> {
+            process.send(room_subject, RemovePlayerUp(state.entity))
+            actor.continue(state)
+          }
           CommandMessage(CommandLook) -> {
             process.send(room_subject, RoomDescriptionUp(state.entity_subject))
             actor.continue(state)
           }
           CommandMessage(CommandSayRoom(text)) -> {
-            let query =
-              state.entity
-              |> dataentity.query(dataentity.QueryName(None))
-            let name = case query {
-              dataentity.QueryName(Some(name)) -> name
-              _ -> "Unknown"
-            }
+            let name = get_entity_name(state.entity)
             process.send(room_subject, RoomSayUp(name, text))
             actor.continue(state)
           }
@@ -385,5 +418,21 @@ fn start_entity(
   case start_result {
     Ok(_) -> Ok(entity_subject)
     Error(err) -> Error(err)
+  }
+}
+
+fn send_to_all(children: Dict(Int, Subject(Internal)), message: Internal) {
+  children
+  |> dict.to_list()
+  |> list.each(fn(kv) { process.send(kv.1, message) })
+}
+
+fn get_entity_name(entity: dataentity.Entity) -> String {
+  let query =
+    entity
+    |> dataentity.query(dataentity.QueryName(None))
+  case query {
+    dataentity.QueryName(Some(name)) -> name
+    _ -> "Unknown"
   }
 }
