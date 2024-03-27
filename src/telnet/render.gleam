@@ -29,7 +29,7 @@ const menu_str = "
 
 pub const term_width = 80
 
-const escape_re = " *\\x1B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~]) *"
+const escape_re = "\\x1B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])"
 
 pub fn has_escape_code(input: String) {
   let assert Ok(re) = regex.from_string(escape_re)
@@ -92,14 +92,12 @@ pub fn logo(width: Int, conn: Connection(_user_message)) {
   |> center(width)
   |> magenta
   |> bold
-  |> word_wrap(term_width)
   |> println(conn)
 }
 
 pub fn menu(width: Int, conn: Connection(_user_message)) {
   { "Type " <> bold("guest") <> " to join with a temporary character" }
   |> center(width)
-  |> word_wrap(term_width)
   |> println(conn)
 }
 
@@ -127,7 +125,13 @@ pub fn backspace(conn: Connection(_user_message)) {
   glisten.send(conn, bytes_builder.from_bit_array(constants.seq_delete))
 }
 
-pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
+pub fn room_descripion(
+  conn: Connection(_user_message),
+  region,
+  name,
+  desc,
+  width,
+) {
   region
   |> string.append(" - ")
   |> string.append(name)
@@ -135,35 +139,40 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
   |> bold
   |> green
   |> string.append(desc)
-  |> word_wrap(term_width)
+  |> word_wrap(width)
   |> println(conn)
 }
 
-pub fn player_spawned(name: String, conn: Connection(_user_message)) {
+pub fn player_spawned(name: String, conn: Connection(_user_message), width) {
   name
   |> string.append(" blinks into existance.")
   |> bold
   |> bright_blue
-  |> word_wrap(term_width)
+  |> word_wrap(width)
   |> println(conn)
 }
 
-pub fn player_quit(name: String, conn: Connection(_user_message)) {
+pub fn player_quit(name: String, conn: Connection(_user_message), width) {
   name
   |> string.append(" vanishes into the ether.")
   |> bold
   |> bright_blue
-  |> word_wrap(term_width)
+  |> word_wrap(width)
   |> println(conn)
 }
 
-pub fn speech(name: String, text: String, conn: Connection(_user_message)) {
+pub fn speech(
+  name: String,
+  text: String,
+  conn: Connection(_user_message),
+  width,
+) {
   name
   |> bold
   |> string.append(" says \"")
   |> string.append(text)
   |> string.append("\"")
-  |> word_wrap(term_width)
+  |> word_wrap(width)
   |> println(conn)
 }
 
@@ -172,7 +181,7 @@ fn center(str: String, width: Int) -> String {
 
   let padding =
     lines
-    |> list.map(string.length)
+    |> list.map(adjusted_length)
     |> list.reduce(int.max)
     |> result.unwrap(width)
     |> int.subtract(width, _)
@@ -180,14 +189,11 @@ fn center(str: String, width: Int) -> String {
     |> result.unwrap(0)
 
   case padding <= 0 {
-    True ->
-      str
-      |> word_wrap(width)
+    True -> str
     False ->
       lines
       |> list.map(fn(str) { string.repeat(" ", padding) <> str })
       |> string.join("\n")
-      |> word_wrap(width)
   }
 }
 
