@@ -26,15 +26,6 @@ fn init(
       conn,
       bytes_builder.concat_bit_arrays([
         constants.char_iac,
-        constants.char_will,
-        constants.char_echo,
-        constants.char_iac,
-        constants.char_will,
-        constants.char_sga,
-        constants.char_iac,
-        constants.char_wont,
-        constants.char_linemode,
-        constants.char_iac,
         constants.char_do,
         constants.char_naws,
       ]),
@@ -52,33 +43,10 @@ fn handler(msg, state, _conn) {
   actor.continue(state)
 }
 
-import gleam/io
-import gleam/bit_array
-
 fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
-  io.debug(bit_array.base16_encode(msg))
-  // this is gross
+  // io.debug(bit_array.base16_encode(msg))
   case msg {
-    <<
-      255,
-      253,
-      1,
-      255,
-      253,
-      3,
-      255,
-      251,
-      31,
-      255,
-      250,
-      31,
-      width,
-      width2,
-      height,
-      height2,
-      255,
-      240,
-    >>
+    <<255, 251, 31, 255, 250, 31, width, width2, height, height2, 255, 240>>
     | <<255, 250, 31, width, width2, height, height2, 255, 240>> -> {
       process.send(
         tcp_subject,
@@ -91,6 +59,6 @@ fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
 }
 
 fn handle_input(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
-  io.debug(bit_array.base16_encode(msg))
+  // io.debug(bit_array.base16_encode(msg))
   process.send(tcp_subject, game_connection.Data(msg))
 }

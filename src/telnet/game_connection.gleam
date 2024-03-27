@@ -40,7 +40,6 @@ pub fn start(
               sim_subject: sim_subject,
               command_subject: None,
             ),
-            buffer: "",
           ),
         ),
         selector,
@@ -69,7 +68,7 @@ fn handle_dimensions(
 ) -> actor.Next(Message, ConnState) {
   // move this into state
   case state.game_state {
-    states.FirstIAC(conn, _, directory, buffer) ->
+    states.FirstIAC(conn, _, directory) ->
       actor.continue(
         ConnState(
           ..state,
@@ -77,13 +76,12 @@ fn handle_dimensions(
             conn,
             states.ClientDimensions(width, height),
             directory,
-            buffer,
           )
           |> states.on_enter(),
         ),
       )
 
-    states.Menu(conn, _, directory, buffer) ->
+    states.Menu(conn, _, directory) ->
       actor.continue(
         ConnState(
           ..state,
@@ -91,12 +89,11 @@ fn handle_dimensions(
             conn,
             states.ClientDimensions(width, height),
             directory,
-            buffer,
           ),
         ),
       )
 
-    states.InWorld(conn, _, directory, buffer) ->
+    states.InWorld(conn, _, directory) ->
       actor.continue(
         ConnState(
           ..state,
@@ -104,12 +101,11 @@ fn handle_dimensions(
             conn,
             states.ClientDimensions(width, height),
             directory,
-            buffer,
           ),
         ),
       )
 
-    states.RoomSay(conn, _, directory, buffer) ->
+    states.RoomSay(conn, _, directory) ->
       actor.continue(
         ConnState(
           ..state,
@@ -117,7 +113,6 @@ fn handle_dimensions(
             conn,
             states.ClientDimensions(width, height),
             directory,
-            buffer,
           ),
         ),
       )

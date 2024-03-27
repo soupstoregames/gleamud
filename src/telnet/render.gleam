@@ -9,22 +9,12 @@ import telnet/constants
 
 pub const logo_str = "
 
-
-
         .__                                  .___
    ____ |  |   ____ _____    _____  __ __  __| _/
   / ___\\|  | _/ __ \\\\__  \\  /     \\|  |  \\/ __ | 
  / /_/  >  |_\\  ___/ / __ \\|  Y Y  \\  |  / /_/ | 
  \\___  /|____/\\___  >____  /__|_|  /____/\\____ | 
 /_____/           \\/     \\/      \\/           \\/ 
-
-"
-
-const menu_str = "
-1. Login (TODO)
-2. Register (TODO)
-3. Join as a guest
-
 
 "
 
@@ -56,17 +46,17 @@ pub fn logo(width: Int, conn: Connection(_user_message)) {
 }
 
 pub fn menu(width: Int, conn: Connection(_user_message)) {
-  menu_str
+  { "Type " <> bold("guest") <> " to join with a temporary character" }
   |> center(width)
   |> println(conn)
 }
 
-pub fn prompt(buffer: String, conn: Connection(_user_message)) {
-  print("> " <> string.reverse(buffer), conn)
+pub fn prompt(conn: Connection(_user_message)) {
+  print("> ", conn)
 }
 
-pub fn prompt_say(buffer: String, conn: Connection(_user_message)) {
-  print("say> " <> string.reverse(buffer), conn)
+pub fn prompt_say(conn: Connection(_user_message)) {
+  print("say> ", conn)
 }
 
 pub fn erase_line(length, conn: Connection(_user_message)) {

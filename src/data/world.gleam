@@ -18,7 +18,8 @@ Commands:
 quit         exit the game
 look         get the room description again
 say <text>   say a message to the room
-say!         toggle on 'say' mode where anything typed is sent as chat, press ESC to go back to command mode
+/say         toggle on 'say' mode where anything typed is sent as chat
+/e           go back to command mode
 ",
           exits: dict.new(),
         ),
