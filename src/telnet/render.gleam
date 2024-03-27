@@ -27,8 +27,6 @@ const menu_str = "
 
 "
 
-pub const term_width = 80
-
 const escape_re = "\\x1B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])"
 
 pub fn has_escape_code(input: String) {
