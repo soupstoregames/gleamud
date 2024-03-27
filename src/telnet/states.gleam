@@ -173,17 +173,32 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
     InWorld(conn, dim, _) -> {
       case update {
         simulation.UpdateRoomDescription(region, name, desc) -> {
-          let assert Ok(_) = render.room_descripion(conn, region, name, desc)
+          let assert Ok(_) =
+            render.room_descripion(
+              state.conn,
+              region,
+              name,
+              desc,
+              state.dimensions.width,
+            )
         }
         simulation.UpdatePlayerSpawned(name) -> {
-          let assert Ok(_) = render.player_spawned(name, conn)
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) =
+            render.player_spawned(name, state.conn, state.dimensions.width)
         }
         simulation.UpdatePlayerQuit(name) -> {
-          let assert Ok(_) = render.player_quit(name, conn)
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) =
+            render.player_quit(name, state.conn, state.dimensions.width)
         }
         simulation.UpdateSayRoom(name, text) -> {
-          // let assert Ok(_) = render.erase_line(dim.width, conn)
-          let assert Ok(_) = render.speech(name, text, conn)
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) =
+            render.speech(name, text, state.conn, state.dimensions.width)
         }
         _ -> Ok(Nil)
       }
@@ -193,19 +208,32 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
     RoomSay(conn, dim, _) -> {
       case update {
         simulation.UpdateRoomDescription(region, name, desc) -> {
-          let assert Ok(_) = render.room_descripion(conn, region, name, desc)
+          let assert Ok(_) =
+            render.room_descripion(
+              state.conn,
+              region,
+              name,
+              desc,
+              state.dimensions.width,
+            )
         }
         simulation.UpdatePlayerSpawned(name) -> {
-          let assert Ok(_) = render.erase_line(dim.width, conn)
-          let assert Ok(_) = render.player_spawned(name, conn)
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) =
+            render.player_spawned(name, state.conn, state.dimensions.width)
         }
         simulation.UpdatePlayerQuit(name) -> {
-          let assert Ok(_) = render.erase_line(dim.width, conn)
-          let assert Ok(_) = render.player_quit(name, conn)
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) =
+            render.player_quit(name, state.conn, state.dimensions.width)
         }
         simulation.UpdateSayRoom(name, text) -> {
-          let assert Ok(_) = render.erase_line(dim.width, conn)
-          let assert Ok(_) = render.speech(name, text, conn)
+          let assert Ok(_) =
+            render.erase_line(state.dimensions.width, state.conn)
+          let assert Ok(_) =
+            render.speech(name, text, state.conn, state.dimensions.width)
         }
         _ -> Ok(Nil)
       }

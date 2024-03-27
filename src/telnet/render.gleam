@@ -4,6 +4,7 @@ import gleam/list
 import gleam/result
 import gleam/string
 import gleam/bytes_builder
+import gleam/regex
 import glisten.{type Connection}
 import telnet/constants
 
@@ -17,6 +18,53 @@ pub const logo_str = "
 /_____/           \\/     \\/      \\/           \\/ 
 
 "
+
+const menu_str = "
+1. Login (TODO)
+2. Register (TODO)
+3. Join as a guest
+
+
+"
+
+const escape_re = "\\x1B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])"
+
+pub fn has_escape_code(input: String) {
+  let assert Ok(re) = regex.from_string(escape_re)
+  regex.check(with: re, content: input)
+}
+
+pub fn adjusted_length(input: String) -> Int {
+  case has_escape_code(input) {
+    True -> {
+      let assert Ok(re) = regex.from_string(escape_re)
+      input
+      |> regex.split(with: re, content: _)
+      |> string.join("")
+      |> string.length()
+    }
+    False -> string.length(input)
+  }
+}
+
+pub fn word_wrap(input: String, max_width: Int) {
+  input
+  |> string.split(" ")
+  |> list.fold([], fn(words, word) {
+    case words {
+      [] -> [word]
+      [line, ..rest] -> {
+        let total_length = adjusted_length(line) + adjusted_length(word) + 1
+        case total_length > max_width {
+          True -> [word, line, ..rest]
+          False -> [line <> " " <> word, ..rest]
+        }
+      }
+    }
+  })
+  |> list.reverse
+  |> string.join("\n")
+}
 
 pub fn print(str: String, conn: Connection(_user_message)) {
   glisten.send(
@@ -75,7 +123,13 @@ pub fn backspace(conn: Connection(_user_message)) {
   glisten.send(conn, bytes_builder.from_bit_array(constants.seq_delete))
 }
 
-pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
+pub fn room_descripion(
+  conn: Connection(_user_message),
+  region,
+  name,
+  desc,
+  width,
+) {
   region
   |> string.append(" - ")
   |> string.append(name)
@@ -83,31 +137,40 @@ pub fn room_descripion(conn: Connection(_user_message), region, name, desc) {
   |> bold
   |> green
   |> string.append(desc)
+  |> word_wrap(width)
   |> println(conn)
 }
 
-pub fn player_spawned(name: String, conn: Connection(_user_message)) {
+pub fn player_spawned(name: String, conn: Connection(_user_message), width) {
   name
   |> string.append(" blinks into existance.")
   |> bold
   |> bright_blue
+  |> word_wrap(width)
   |> println(conn)
 }
 
-pub fn player_quit(name: String, conn: Connection(_user_message)) {
+pub fn player_quit(name: String, conn: Connection(_user_message), width) {
   name
   |> string.append(" vanishes into the ether.")
   |> bold
   |> bright_blue
+  |> word_wrap(width)
   |> println(conn)
 }
 
-pub fn speech(name: String, text: String, conn: Connection(_user_message)) {
+pub fn speech(
+  name: String,
+  text: String,
+  conn: Connection(_user_message),
+  width,
+) {
   name
   |> bold
   |> string.append(" says \"")
   |> string.append(text)
   |> string.append("\"")
+  |> word_wrap(width)
   |> println(conn)
 }
 
@@ -116,7 +179,7 @@ fn center(str: String, width: Int) -> String {
 
   let padding =
     lines
-    |> list.map(string.length)
+    |> list.map(adjusted_length)
     |> list.reduce(int.max)
     |> result.unwrap(width)
     |> int.subtract(width, _)
@@ -131,13 +194,6 @@ fn center(str: String, width: Int) -> String {
       |> string.join("\n")
   }
 }
-
-// fn wrap(str: String, width: Int) -> String {
-//   str
-//   |> string.split("\n")
-//   |> list.fold([], fn(lines, line) { todo })
-//   |> string.join("\n")
-// }
 
 // be sure to call this after wrap
 fn insert_carriage_returns(str: String) -> String {
