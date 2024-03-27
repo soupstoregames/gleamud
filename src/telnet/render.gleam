@@ -180,20 +180,16 @@ fn center(str: String, width: Int) -> String {
     |> result.unwrap(0)
 
   case padding <= 0 {
-    True -> str
+    True ->
+      str
+      |> word_wrap(width)
     False ->
       lines
       |> list.map(fn(str) { string.repeat(" ", padding) <> str })
       |> string.join("\n")
+      |> word_wrap(width)
   }
 }
-
-// fn wrap(str: String, width: Int) -> String {
-//   str
-//   |> string.split("\n")
-//   |> list.fold([], fn(lines, line) { todo })
-//   |> string.join("\n")
-// }
 
 // be sure to call this after wrap
 fn insert_carriage_returns(str: String) -> String {
