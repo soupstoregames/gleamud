@@ -33,3 +33,23 @@ pub fn word_wrap_test() {
   result
   |> should.equal("Type [1mguest[0m to\njoin with a\ntemporary\ncharacter")
 }
+
+const multiline_str = "Test Room:
+This is a room that does not, in actuality, exist. It exists only for demonstration.
+It has intentional paragraphs and line breaks to test the word wrapping function.
+"
+
+const expected_multiline_str = "Test Room:
+This is a room that does not, in
+actuality, exist. It exists only for
+demonstration.
+It has intentional paragraphs and line
+breaks to test the word wrapping
+function.
+"
+
+pub fn word_wrap_multiline_test() {
+  let result = word_wrap(multiline_str, 40)
+  result
+  |> should.equal(expected_multiline_str)
+}

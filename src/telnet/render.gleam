@@ -19,14 +19,6 @@ pub const logo_str = "
 
 "
 
-const menu_str = "
-1. Login (TODO)
-2. Register (TODO)
-3. Join as a guest
-
-
-"
-
 const escape_re = "\\x1B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])"
 
 pub fn has_escape_code(input: String) {
@@ -47,7 +39,7 @@ pub fn adjusted_length(input: String) -> Int {
   }
 }
 
-pub fn word_wrap(input: String, max_width: Int) {
+fn word_wrap_line(input: String, max_width: Int) {
   input
   |> string.split(" ")
   |> list.fold([], fn(words, word) {
@@ -63,6 +55,13 @@ pub fn word_wrap(input: String, max_width: Int) {
     }
   })
   |> list.reverse
+  |> string.join("\n")
+}
+
+pub fn word_wrap(input: String, max_width: Int) {
+  input
+  |> string.split("\n")
+  |> list.map(fn(line) { word_wrap_line(line, max_width) })
   |> string.join("\n")
 }
 
