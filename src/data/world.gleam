@@ -1,5 +1,17 @@
 import gleam/dict.{type Dict}
-import data/core
+
+pub type Direction {
+  North
+  East
+  South
+  West
+  NorthEast
+  SouthEast
+  SouthWest
+  NorthWest
+  Up
+  Down
+}
 
 pub fn load_world() -> WorldTemplate {
   WorldTemplate(rooms: dict.new())
@@ -32,13 +44,9 @@ fn add_room(world: WorldTemplate, id: Int, room: RoomTemplate) {
 }
 
 pub type RoomTemplate {
-  RoomTemplate(
-    name: String,
-    description: String,
-    exits: Dict(core.Direction, Int),
-  )
+  RoomTemplate(name: String, description: String, exits: Dict(Direction, Int))
 }
 
-fn add_exit(room: RoomTemplate, direction: core.Direction, location: Int) {
+fn add_exit(room: RoomTemplate, direction: Direction, location: Int) {
   RoomTemplate(..room, exits: dict.insert(room.exits, direction, location))
 }
