@@ -7,14 +7,14 @@ import telnet/constants
 import simulation
 import telnet/game_connection
 
-pub fn start(port: Int, sim_subject: Subject(simulation.Control)) {
+pub fn start(port: Int, sim_subject: Subject(simulation.Command)) {
   glisten.handler(init(_, sim_subject), handler)
   |> glisten.serve(port)
 }
 
 fn init(
   conn,
-  sim_subject: Subject(simulation.Control),
+  sim_subject: Subject(simulation.Command),
 ) -> #(Subject(game_connection.Message), Option(process.Selector(b))) {
   let parent_subject = process.new_subject()
   let assert Ok(_subject) =

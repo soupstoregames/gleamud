@@ -10,7 +10,3 @@ pub type Direction {
   Up
   Down
 }
-
-pub type Location {
-  Location(region: Int, room: Int)
-}

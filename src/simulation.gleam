@@ -2,65 +2,41 @@ import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
 import gleam/function
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
-import data/core
+import gleam/result
 import data/entity as dataentity
 import data/prefabs
 import data/world
 
-/// Control message are sent by top level actors to control the sim directly
-pub type Control {
-  JoinAsGuest(Subject(Update))
-  Tick
-  Shutdown
-}
-
 /// Commands are sent from game connections to entities
 pub type Command {
-  CommandQuit
-  CommandLook
-  CommandSayRoom(text: String)
+  Tick
+  Shutdown
+  JoinAsGuest(Subject(Update), reply_with: Subject(Result(Int, Nil)))
+  CommandQuit(entity_id: Int)
+  CommandLook(entity_id: Int)
+  CommandSayRoom(entity_id: Int, text: String)
 }
 
-/// Updates are sent from entities to game connections
+/// Updates are sent from the sim to the game mux
 pub type Update {
-  UpdateCommandSubject(Subject(Command))
-  UpdateRoomDescription(region: String, name: String, description: String)
+  UpdateRoomDescription(name: String, description: String)
   UpdatePlayerSpawned(name: String)
   UpdatePlayerQuit(name: String)
   UpdateSayRoom(name: String, text: String)
 }
 
-type SimMessage {
-  Control(Control)
-  Sim(Internal)
-}
-
-type Internal {
-  TTick
-
-  SpawnActorEntity(dataentity.Entity, core.Location, Subject(Update))
-  RemovePlayerUp(dataentity.Entity)
-  RemovePlayerDown(String)
-
-  RoomDescriptionUp(Subject(Internal))
-  RoomDescriptionDown(region: String, name: String, description: String)
-
-  RoomSayUp(name: String, text: String)
-  RoomSayDown(name: String, text: String)
-}
-
 type SimState {
   SimState(
-    next_id: Int,
-    world_template: world.WorldTemplate,
-    sim_subject: Subject(Internal),
-    regions: Dict(Int, Subject(Internal)),
+    next_entity_id: Int,
+    sim_subject: Subject(Command),
+    rooms: Dict(Int, Room),
+    controlled_entity_room_ids: Dict(Int, Int),
   )
 }
 
-pub fn start() -> Result(Subject(Control), actor.StartError) {
+pub fn start() -> Result(Subject(Command), actor.StartError) {
   // data loading
   let world = world.load_world()
 
@@ -70,366 +46,205 @@ pub fn start() -> Result(Subject(Control), actor.StartError) {
     actor.start_spec(actor.Spec(
       init: fn() {
         // create the subject the main process to send control messages on
-        let control_subject = process.new_subject()
-        process.send(parent_subject, control_subject)
-
-        // dont send this up as it will only be used by child regions
         let sim_subject = process.new_subject()
+        process.send(parent_subject, sim_subject)
 
-        // spawn the regions which will spawn the rooms
-        // later this will be done ad hoc to cut down on redundant actors
-        //   and to support instances
-        let regions =
-          world.regions
+        let selector =
+          process.new_selector()
+          |> process.selecting(sim_subject, function.identity)
+
+        let rooms =
+          world.rooms
           |> dict.to_list()
           |> list.map(fn(kv) {
-            let assert Ok(subject) = start_region(kv.1, sim_subject)
-            #(kv.0, subject)
+            #(kv.0, Room(template: kv.1, entities: dict.new()))
           })
           |> dict.from_list()
 
-        // always select control messages from the main process and sim messages from the child regions
-        let selector =
-          process.new_selector()
-          |> process.selecting(control_subject, fn(msg) { Control(msg) })
-          |> process.selecting(sim_subject, fn(msg) { Sim(msg) })
-
-        actor.Ready(SimState(0, world, sim_subject, regions), selector)
+        actor.Ready(SimState(0, sim_subject, rooms, dict.new()), selector)
       },
       init_timeout: 1000,
-      loop: fn(message, state) -> actor.Next(SimMessage, SimState) {
+      loop: fn(message, state) -> actor.Next(Command, SimState) {
         case message {
-          Control(JoinAsGuest(update_subject)) -> {
-            let location = core.Location(0, 0)
+          Tick -> actor.continue(state)
+          Shutdown -> actor.continue(state)
+          JoinAsGuest(update_subject, client) -> {
+            let room_id = 0
             let entity =
-              dataentity.Entity(state.next_id, prefabs.create_guest_player())
-            let assert Ok(region_subject) =
-              dict.get(state.regions, location.region)
-            process.send(
-              region_subject,
-              SpawnActorEntity(entity, location, update_subject),
-            )
-            actor.continue(SimState(..state, next_id: state.next_id + 1))
-          }
+              Entity(
+                id: state.next_entity_id,
+                data: prefabs.create_guest_player(),
+                update_subject: Some(update_subject),
+              )
+            process.send(client, Ok(entity.id))
 
-          Control(Tick) -> {
-            // forward the tick to all regions
-            state.regions
-            |> dict.to_list()
-            |> list.each(fn(kv) { process.send(kv.1, TTick) })
+            send_update_to_room(
+              state,
+              room_id,
+              UpdatePlayerSpawned(get_entity_name(entity)),
+            )
+
+            let assert Ok(room) = dict.get(state.rooms, room_id)
+            process.send(
+              update_subject,
+              UpdateRoomDescription(
+                name: room.template.name,
+                description: room.template.description,
+              ),
+            )
+
+            actor.continue(
+              state
+              |> add_entity(entity, room_id)
+              |> increment_next_entity_id,
+            )
+          }
+          CommandQuit(entity_id) -> {
+            // get all the stuff
+            let assert Ok(room_id) =
+              dict.get(state.controlled_entity_room_ids, entity_id)
+            let assert Ok(entity) = get_entity(state, entity_id, room_id)
+
+            // remove the entity before sending updates
+            let new_state =
+              state
+              |> remove_entity(entity_id, room_id)
+
+            // tell all other controlled entities in that room that the player quit
+            send_update_to_room(
+              new_state,
+              room_id,
+              UpdatePlayerQuit(get_entity_name(entity)),
+            )
+
+            // continue without the entity
+            actor.continue(new_state)
+          }
+          CommandLook(entity_id) -> {
+            let assert Ok(room_id) =
+              dict.get(state.controlled_entity_room_ids, entity_id)
+            let assert Ok(room) = dict.get(state.rooms, room_id)
+            let assert Ok(entity) = dict.get(room.entities, entity_id)
+
+            case entity.update_subject {
+              Some(update_subject) ->
+                process.send(
+                  update_subject,
+                  UpdateRoomDescription(
+                    name: room.template.name,
+                    description: room.template.description,
+                  ),
+                )
+              None -> Nil
+            }
+
             actor.continue(state)
           }
+          CommandSayRoom(entity_id, text) -> {
+            let assert Ok(room_id) =
+              dict.get(state.controlled_entity_room_ids, entity_id)
+            let assert Ok(room) = dict.get(state.rooms, room_id)
+            let assert Ok(entity) = dict.get(room.entities, entity_id)
 
-          Control(Shutdown) -> actor.Stop(process.Normal)
+            send_update_to_room(
+              state,
+              room_id,
+              UpdateSayRoom(get_entity_name(entity), text),
+            )
 
-          _ -> actor.continue(state)
+            actor.continue(state)
+          }
         }
       },
     ))
 
-  let assert Ok(control_subject) = process.receive(parent_subject, 1000)
+  let assert Ok(sim_subject) = process.receive(parent_subject, 1000)
 
   case start_result {
-    Ok(_) -> Ok(control_subject)
+    Ok(_) -> Ok(sim_subject)
     Error(err) -> Error(err)
   }
 }
 
-pub fn stop(subject: Subject(Control)) {
+pub fn stop(subject: Subject(Command)) {
   process.send(subject, Shutdown)
 }
 
-type RegionState {
-  RegionState(
-    template: world.RegionTemplate,
-    sim_subject: Subject(Internal),
-    rooms: Dict(Int, Subject(Internal)),
+fn add_entity(state: SimState, entity: Entity, room_id: Int) -> SimState {
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+  SimState(
+    ..state,
+    controlled_entity_room_ids: dict.insert(
+      state.controlled_entity_room_ids,
+      entity.id,
+      room_id,
+    ),
+    rooms: dict.insert(
+      state.rooms,
+      room_id,
+      Room(..room, entities: dict.insert(room.entities, entity.id, entity)),
+    ),
   )
 }
 
-fn start_region(
-  template: world.RegionTemplate,
-  sim_subject: Subject(Internal),
-) -> Result(Subject(Internal), actor.StartError) {
-  let parent_subject = process.new_subject()
-  let start_result =
-    actor.start_spec(actor.Spec(
-      init: fn() {
-        // create a Internal subject for the sim or child rooms to talk to the region
-        let region_subject = process.new_subject()
-        process.send(parent_subject, region_subject)
-
-        // spawn the rooms which will spawn the rooms
-        // later this will be done ad hoc to cut down on redundant actors
-        //   and to support instances
-        let rooms =
-          template.rooms
-          |> dict.to_list()
-          |> list.map(fn(kv) {
-            let assert Ok(subject) =
-              start_room(template.name, kv.1, region_subject)
-            #(kv.0, subject)
-          })
-          |> dict.from_list()
-
-        // always select from the region subject, messages from the sim above or the rooms below
-        let selector =
-          process.new_selector()
-          |> process.selecting(region_subject, function.identity)
-
-        actor.Ready(RegionState(template, sim_subject, rooms), selector)
-      },
-      init_timeout: 1000,
-      loop: fn(message, state) -> actor.Next(Internal, RegionState) {
-        case message {
-          TTick -> {
-            // forward the tick to all rooms
-            state.rooms
-            |> dict.to_list()
-            |> list.each(fn(kv) { process.send(kv.1, TTick) })
-
-            actor.continue(state)
-          }
-          SpawnActorEntity(entity, location, update_subject) -> {
-            let assert Ok(room_subject) = dict.get(state.rooms, location.room)
-            process.send(
-              room_subject,
-              SpawnActorEntity(entity, location, update_subject),
-            )
-            actor.continue(state)
-          }
-          _ -> actor.continue(state)
-        }
-      },
-    ))
-
-  // receive the region subject from the region actor
-  let assert Ok(region_subject) = process.receive(parent_subject, 1000)
-
-  case start_result {
-    Ok(_) -> Ok(region_subject)
-    Error(err) -> Error(err)
-  }
+fn get_entity(
+  state: SimState,
+  entity_id: Int,
+  room_id: Int,
+) -> Result(Entity, Nil) {
+  use room <- result.try(dict.get(state.rooms, room_id))
+  dict.get(room.entities, entity_id)
 }
 
-type RoomState {
-  RoomState(
-    region_name: String,
-    template: world.RoomTemplate,
-    region_subject: Subject(Internal),
-    room_subject: Subject(Internal),
-    entities: Dict(Int, Subject(Internal)),
+fn remove_entity(state: SimState, entity_id: Int, room_id: Int) -> SimState {
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+  SimState(
+    ..state,
+    controlled_entity_room_ids: dict.delete(
+      state.controlled_entity_room_ids,
+      entity_id,
+    ),
+    rooms: dict.insert(
+      state.rooms,
+      room_id,
+      Room(..room, entities: dict.delete(room.entities, entity_id)),
+    ),
   )
 }
 
-fn start_room(
-  region_name: String,
-  template: world.RoomTemplate,
-  region_subject: Subject(Internal),
-) -> Result(Subject(Internal), actor.StartError) {
-  let parent_subject = process.new_subject()
-  let start_result =
-    actor.start_spec(actor.Spec(
-      init: fn() {
-        // create a Internal subject for the region or child entities to talk to the room
-        let room_subject = process.new_subject()
-        process.send(parent_subject, room_subject)
-
-        // always select from the room subject, messages from the region above or the entities below
-        let selector =
-          process.new_selector()
-          |> process.selecting(room_subject, function.identity)
-
-        actor.Ready(
-          RoomState(
-            region_name,
-            template,
-            region_subject,
-            room_subject,
-            dict.new(),
-          ),
-          selector,
-        )
-      },
-      init_timeout: 1000,
-      loop: fn(message, state) -> actor.Next(Internal, RoomState) {
-        case message {
-          TTick -> actor.continue(state)
-          SpawnActorEntity(entity, loc, update_subject) -> {
-            let assert Ok(ent) =
-              start_entity(entity, state.room_subject, update_subject)
-
-            state.entities
-            |> dict.to_list()
-            |> list.each(fn(kv) {
-              process.send(kv.1, SpawnActorEntity(entity, loc, update_subject))
-            })
-
-            actor.continue(
-              RoomState(
-                ..state,
-                entities: dict.insert(state.entities, entity.id, ent),
-              ),
-            )
-          }
-          RemovePlayerUp(entity) -> {
-            let name = get_entity_name(entity)
-            let new_entities = dict.delete(state.entities, entity.id)
-            send_to_all(new_entities, RemovePlayerDown(name))
-            actor.continue(RoomState(..state, entities: new_entities))
-          }
-          RoomDescriptionUp(reply) -> {
-            process.send(
-              reply,
-              RoomDescriptionDown(
-                state.region_name,
-                state.template.name,
-                state.template.description,
-              ),
-            )
-            actor.continue(state)
-          }
-          RoomSayUp(name, text) -> {
-            send_to_all(state.entities, RoomSayDown(name, text))
-            actor.continue(state)
-          }
-          _ -> actor.continue(state)
-        }
-      },
-    ))
-
-  // receive the room subject from the room actor
-  let assert Ok(room_subject) = process.receive(parent_subject, 1000)
-
-  case start_result {
-    Ok(_) -> Ok(room_subject)
-    Error(err) -> Error(err)
-  }
+fn increment_next_entity_id(state: SimState) -> SimState {
+  SimState(..state, next_entity_id: state.next_entity_id + 1)
 }
 
-type EntityMessage {
-  InternalMessage(Internal)
-  CommandMessage(Command)
+fn send_update_to_room(state: SimState, room_id: Int, update: Update) {
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+  room.entities
+  |> dict.to_list
+  |> list.each(fn(kv) {
+    case { kv.1 }.update_subject {
+      Some(update_subject) -> {
+        process.send(update_subject, update)
+      }
+      _ -> Nil
+    }
+  })
 }
 
-type EntityState {
-  EntityState(
-    entity: dataentity.Entity,
-    // the subject for this entity
-    entity_subject: Subject(Internal),
-    // the subject to talk to the parent room
-    room_subject: Subject(Internal),
-    // sent to game controllers when they take control of this entity
-    command_subject: Subject(Command),
-    // used for sending updates to game controllers
-    update_subject: Subject(Update),
+type Room {
+  Room(template: world.RoomTemplate, entities: Dict(Int, Entity))
+}
+
+type Entity {
+  Entity(
+    id: Int,
+    data: dataentity.Entity,
+    update_subject: Option(Subject(Update)),
   )
 }
 
-// construct with 
-// - the entity data
-// - the update_subject to send entity updates to the game controller
-// - the parent room's sim_subject to send messages into the room
-// and return
-// - the entity_subject to send message to the entity
-// 
-fn start_entity(
-  entity: dataentity.Entity,
-  room_subject: Subject(Internal),
-  update_subject: Subject(Update),
-) -> Result(Subject(Internal), actor.StartError) {
-  let parent_subject = process.new_subject()
-
-  let start_result =
-    actor.start_spec(actor.Spec(
-      init: fn() {
-        // send the entity subject back to the constructor to be returned
-        let entity_subject: Subject(Internal) = process.new_subject()
-        process.send(parent_subject, entity_subject)
-
-        // send the command subject over the update subject to the game connection
-        let command_subject = process.new_subject()
-        process.send(update_subject, UpdateCommandSubject(command_subject))
-
-        // request initial room description
-        process.send(room_subject, RoomDescriptionUp(entity_subject))
-
-        // 
-        let selector =
-          process.new_selector()
-          |> process.selecting(entity_subject, fn(msg) { InternalMessage(msg) })
-          |> process.selecting(command_subject, fn(msg) { CommandMessage(msg) })
-
-        actor.Ready(
-          EntityState(
-            entity,
-            entity_subject,
-            room_subject,
-            command_subject,
-            update_subject,
-          ),
-          selector,
-        )
-      },
-      init_timeout: 1000,
-      loop: fn(message, state) -> actor.Next(EntityMessage, EntityState) {
-        case message {
-          InternalMessage(TTick) -> actor.continue(state)
-          InternalMessage(SpawnActorEntity(entity, _, _)) -> {
-            let name = get_entity_name(entity)
-            process.send(state.update_subject, UpdatePlayerSpawned(name))
-            actor.continue(state)
-          }
-          InternalMessage(RemovePlayerDown(name)) -> {
-            process.send(state.update_subject, UpdatePlayerQuit(name))
-            actor.continue(state)
-          }
-          InternalMessage(RoomDescriptionDown(region, name, description)) -> {
-            process.send(
-              state.update_subject,
-              UpdateRoomDescription(region, name, description),
-            )
-            actor.continue(state)
-          }
-          InternalMessage(RoomSayDown(name, text)) -> {
-            process.send(state.update_subject, UpdateSayRoom(name, text))
-            actor.continue(state)
-          }
-          CommandMessage(CommandQuit) -> {
-            process.send(room_subject, RemovePlayerUp(state.entity))
-            actor.continue(state)
-          }
-          CommandMessage(CommandLook) -> {
-            process.send(room_subject, RoomDescriptionUp(state.entity_subject))
-            actor.continue(state)
-          }
-          CommandMessage(CommandSayRoom(text)) -> {
-            let name = get_entity_name(state.entity)
-            process.send(room_subject, RoomSayUp(name, text))
-            actor.continue(state)
-          }
-          _ -> actor.continue(state)
-        }
-      },
-    ))
-
-  let assert Ok(entity_subject) = process.receive(parent_subject, 1000)
-
-  case start_result {
-    Ok(_) -> Ok(entity_subject)
-    Error(err) -> Error(err)
-  }
-}
-
-fn send_to_all(children: Dict(Int, Subject(Internal)), message: Internal) {
-  children
-  |> dict.to_list()
-  |> list.each(fn(kv) { process.send(kv.1, message) })
-}
-
-fn get_entity_name(entity: dataentity.Entity) -> String {
+fn get_entity_name(entity: Entity) -> String {
   let query =
-    entity
+    entity.data
     |> dataentity.query(dataentity.QueryName(None))
   case query {
     dataentity.QueryName(Some(name)) -> name

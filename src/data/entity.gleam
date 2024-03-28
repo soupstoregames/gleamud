@@ -26,16 +26,15 @@ pub type PaperDollSlotType {
 }
 
 pub type Entity {
-  Entity(id: Int, components: List(Component))
+  Entity(components: List(Component))
 }
 
-pub fn new(id: Int, components: List(Component)) -> Entity {
+pub fn new(components: List(Component)) -> Entity {
   Entity(
-    id,
     components
-      |> list.sort(fn(a, b) {
-        int.compare(component_priority(a), component_priority(b))
-      }),
+    |> list.sort(fn(a, b) {
+      int.compare(component_priority(a), component_priority(b))
+    }),
   )
 }
 
@@ -145,12 +144,12 @@ pub fn handle_event(entity: Entity, event: Event) -> #(Entity, Event) {
         |> list.sort(fn(a, b) {
           int.compare(component_priority(a), component_priority(b))
         })
-      #(Entity(entity.id, components: new_components), event)
+      #(Entity(components: new_components), event)
     }
     _ -> {
       let event = list.fold(entity.components, event, transform_event)
       let new_components = list.map(entity.components, apply_event(_, event))
-      #(Entity(entity.id, components: new_components), event)
+      #(Entity(components: new_components), event)
     }
   }
 }

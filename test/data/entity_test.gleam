@@ -3,7 +3,7 @@ import gleeunit/should
 import data/entity.{handle_event, query}
 
 pub fn query_name_test() {
-  let named = entity.new(1, [entity.Named("named")])
+  let named = entity.new([entity.Named("named")])
 
   let assert entity.QueryName(Some(name)) =
     named
@@ -12,7 +12,7 @@ pub fn query_name_test() {
   name
   |> should.equal("named")
 
-  let not_named = entity.new(1, [])
+  let not_named = entity.new([])
 
   let assert entity.QueryName(None) =
     not_named
@@ -20,7 +20,7 @@ pub fn query_name_test() {
 }
 
 pub fn query_status_test() {
-  let status = entity.new(1, [entity.Physical(10, 3)])
+  let status = entity.new([entity.Physical(10, 3)])
 
   let assert entity.QueryStatus(Some(hp)) =
     status
@@ -29,7 +29,7 @@ pub fn query_status_test() {
   hp
   |> should.equal(10)
 
-  let no_hp = entity.new(1, [])
+  let no_hp = entity.new([])
 
   let assert entity.QueryStatus(None) =
     no_hp
@@ -38,7 +38,7 @@ pub fn query_status_test() {
 
 pub fn query_equipable_test() {
   let equipable =
-    entity.new(1, [entity.Equipable([entity.PrimaryHand, entity.Back])])
+    entity.new([entity.Equipable([entity.PrimaryHand, entity.Back])])
 
   let assert entity.QueryEquipable(slots) =
     equipable
@@ -47,7 +47,7 @@ pub fn query_equipable_test() {
   slots
   |> should.equal([entity.PrimaryHand, entity.Back])
 
-  let not_equipable = entity.new(1, [])
+  let not_equipable = entity.new([])
 
   let assert entity.QueryEquipable([]) =
     not_equipable
@@ -56,15 +56,15 @@ pub fn query_equipable_test() {
 
 pub fn query_paper_doll_test() {
   let paper_doll =
-    entity.new(1, [
-      entity.PaperDollHead(Some(entity.new(2, [entity.Named("Cap")]))),
+    entity.new([
+      entity.PaperDollHead(Some(entity.new([entity.Named("Cap")]))),
       entity.PaperDollHead(None),
-      entity.PaperDollBack(Some(entity.new(3, [entity.Named("Backpack")]))),
-      entity.PaperDollChest(Some(entity.new(4, []))),
-      entity.PaperDollPrimaryHand(Some(entity.new(5, [entity.Named("Sword")]))),
-      entity.PaperDollOffHand(Some(entity.new(6, [entity.Named("Buckler")]))),
-      entity.PaperDollLegs(Some(entity.new(7, [entity.Named("Trousers")]))),
-      entity.PaperDollFeet(Some(entity.new(8, [entity.Named("Boots")]))),
+      entity.PaperDollBack(Some(entity.new([entity.Named("Backpack")]))),
+      entity.PaperDollChest(Some(entity.new([]))),
+      entity.PaperDollPrimaryHand(Some(entity.new([entity.Named("Sword")]))),
+      entity.PaperDollOffHand(Some(entity.new([entity.Named("Buckler")]))),
+      entity.PaperDollLegs(Some(entity.new([entity.Named("Trousers")]))),
+      entity.PaperDollFeet(Some(entity.new([entity.Named("Boots")]))),
     ])
 
   let assert entity.QueryPaperDoll(slots) =
@@ -85,7 +85,7 @@ pub fn query_paper_doll_test() {
 }
 
 pub fn take_damage_test() {
-  let ent = entity.new(1, [entity.Physical(10, 3)])
+  let ent = entity.new([entity.Physical(10, 3)])
 
   let assert #(ent, entity.TakeDamage(damage_amount)) =
     ent
@@ -103,7 +103,7 @@ pub fn take_damage_test() {
 }
 
 pub fn invulnerable_test() {
-  let ent = entity.new(1, [entity.Physical(10, 3), entity.Invulnerable])
+  let ent = entity.new([entity.Physical(10, 3), entity.Invulnerable])
 
   let assert #(ent, entity.TakeDamage(damage_amount)) =
     ent

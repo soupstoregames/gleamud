@@ -122,16 +122,8 @@ pub fn backspace(conn: Connection(_user_message)) {
   glisten.send(conn, bytes_builder.from_bit_array(constants.seq_delete))
 }
 
-pub fn room_descripion(
-  conn: Connection(_user_message),
-  region,
-  name,
-  desc,
-  width,
-) {
-  region
-  |> string.append(" - ")
-  |> string.append(name)
+pub fn room_descripion(conn: Connection(_user_message), name, desc, width) {
+  name
   |> string.append("\n")
   |> bold
   |> green
