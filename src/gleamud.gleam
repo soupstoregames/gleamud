@@ -2,10 +2,18 @@ import gleam/erlang/process
 import gleam/io
 import telnet/server
 import simulation
+import data/sqlite
 import repeatedly
+import envoy
 
 pub fn main() {
-  let assert Ok(sim_subject) = simulation.start()
+  let db_str = case envoy.get("DB") {
+    Ok(db) -> db
+    Error(Nil) -> "./gleamud.db"
+  }
+
+  let assert Ok(_) = sqlite.init_schema(db_str)
+  let assert Ok(sim_subject) = simulation.start(db_str)
   let assert Ok(_) = server.start(3000, sim_subject)
 
   let _ =

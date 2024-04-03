@@ -36,9 +36,9 @@ type SimState {
   )
 }
 
-pub fn start() -> Result(Subject(Command), actor.StartError) {
+pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
   // data loading
-  let world = world.load_world()
+  let world = world.load_world(conn_string)
 
   let parent_subject = process.new_subject()
 
