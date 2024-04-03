@@ -1,5 +1,9 @@
 FROM ghcr.io/gleam-lang/gleam:v1.0.0-erlang-alpine
 
+# Add packages to build non-gleam deps
+RUN apk add gcc \
+    && apk add musl-dev
+
 # Add project code
 COPY . /build/
 
