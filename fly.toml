@@ -22,3 +22,10 @@ port = 3000
 cpus = 1
 memory = "256mb"
 cpu_kind = "shared"
+
+[env]
+DB = "/data/gleamud.db"
+
+[mounts]
+source = "db_data"
+destination = "/data"
