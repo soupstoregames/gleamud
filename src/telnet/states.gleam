@@ -1,5 +1,6 @@
 import gleam/bit_array
 import gleam/erlang/process.{type Subject}
+import gleam/int
 import gleam/list
 import gleam/string
 import simulation
@@ -110,6 +111,12 @@ pub fn handle_input(state: State, data: BitArray) -> State {
               let assert Ok(_) = render.prompt(conn)
               Nil
             }
+            Error(InvalidCommand) -> {
+              let assert Ok(_) =
+                render.error("Invalid command args", state.conn)
+              let assert Ok(_) = render.prompt(conn)
+              Nil
+            }
             Error(SayWhat) -> {
               let assert Ok(_) = render.error("Say what?", state.conn)
               let assert Ok(_) = render.prompt(conn)
@@ -168,6 +175,18 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
           let assert Ok(_) = render.erase_line(dim.width, conn)
           let assert Ok(_) = render.speech(name, text, conn, dim.width)
         }
+        simulation.UpdatePlayerTeleportedOut(name) -> {
+          let assert Ok(_) = render.erase_line(dim.width, conn)
+          let assert Ok(_) = render.entity_teleported_out(name, conn, dim.width)
+        }
+        simulation.UpdatePlayerTeleportedIn(name) -> {
+          let assert Ok(_) = render.erase_line(dim.width, conn)
+          let assert Ok(_) = render.entity_teleported_in(name, conn, dim.width)
+        }
+        simulation.AdminCommandFailed(reason) -> {
+          let assert Ok(_) =
+            render.admin_command_failed(reason, conn, dim.width)
+        }
       }
       let assert Ok(_) = render.prompt(conn)
       state
@@ -190,6 +209,18 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
           let assert Ok(_) = render.erase_line(dim.width, conn)
           let assert Ok(_) = render.speech(name, text, conn, dim.width)
         }
+        simulation.UpdatePlayerTeleportedOut(name) -> {
+          let assert Ok(_) = render.erase_line(dim.width, conn)
+          let assert Ok(_) = render.entity_teleported_out(name, conn, dim.width)
+        }
+        simulation.UpdatePlayerTeleportedIn(name) -> {
+          let assert Ok(_) = render.erase_line(dim.width, conn)
+          let assert Ok(_) = render.entity_teleported_out(name, conn, dim.width)
+        }
+        simulation.AdminCommandFailed(reason) -> {
+          let assert Ok(_) =
+            render.admin_command_failed(reason, conn, dim.width)
+        }
       }
 
       let assert Ok(_) = render.prompt_say(conn)
@@ -200,6 +231,7 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
 
 type ParseCommandError {
   UnknownCommand
+  InvalidCommand
   SayWhat
 }
 
@@ -218,6 +250,12 @@ fn parse_command(
             entity_id: entity_id,
             text: string.join(rest, " "),
           ))
+      }
+    }
+    ["@tp", room, ..] -> {
+      case int.parse(room) {
+        Ok(room_num) -> Ok(simulation.AdminTeleport(entity_id, room_num))
+        Error(Nil) -> Error(InvalidCommand)
       }
     }
     _ -> Error(UnknownCommand)

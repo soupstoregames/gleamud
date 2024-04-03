@@ -182,9 +182,47 @@ pub fn player_spawned(name: String, conn: Connection(_user_message), width) {
 
 pub fn player_quit(name: String, conn: Connection(_user_message), width) {
   name
-  |> string.append(" vanishes into the ether.")
+  |> string.append(" fades into non-existence.")
   |> bold
   |> bright_blue
+  |> word_wrap(width)
+  |> println(conn)
+}
+
+pub fn entity_teleported_out(
+  name: String,
+  conn: Connection(_user_message),
+  width,
+) {
+  name
+  |> string.append(" apparates into thin air.")
+  |> bold
+  |> bright_blue
+  |> word_wrap(width)
+  |> println(conn)
+}
+
+pub fn entity_teleported_in(
+  name: String,
+  conn: Connection(_user_message),
+  width,
+) {
+  name
+  |> string.append(" apparates from thin air.")
+  |> bold
+  |> bright_blue
+  |> word_wrap(width)
+  |> println(conn)
+}
+
+pub fn admin_command_failed(
+  reason: String,
+  conn: Connection(_user_message),
+  width,
+) {
+  reason
+  |> bold
+  |> red
   |> word_wrap(width)
   |> println(conn)
 }

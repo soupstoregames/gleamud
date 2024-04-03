@@ -8,15 +8,19 @@ import gleam/result
 import data/entity as dataentity
 import data/prefabs
 import data/world
+import gleam/io
 
 /// Commands are sent from game connections to entities
 pub type Command {
   Tick
   Shutdown
   JoinAsGuest(Subject(Update), reply_with: Subject(Result(Int, Nil)))
+
   CommandQuit(entity_id: Int)
   CommandLook(entity_id: Int)
   CommandSayRoom(entity_id: Int, text: String)
+
+  AdminTeleport(entity_id: Int, room_id: Int)
 }
 
 /// Updates are sent from the sim to the game mux
@@ -29,6 +33,10 @@ pub type Update {
   UpdatePlayerSpawned(name: String)
   UpdatePlayerQuit(name: String)
   UpdateSayRoom(name: String, text: String)
+  UpdatePlayerTeleportedOut(name: String)
+  UpdatePlayerTeleportedIn(name: String)
+
+  AdminCommandFailed(reason: String)
 }
 
 type SimState {
@@ -129,20 +137,16 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
             let assert Ok(room_id) =
               dict.get(state.controlled_entity_room_ids, entity_id)
             let assert Ok(room) = dict.get(state.rooms, room_id)
-            let assert Ok(entity) = dict.get(room.entities, entity_id)
 
-            case entity.update_subject {
-              Some(update_subject) ->
-                process.send(
-                  update_subject,
-                  UpdateRoomDescription(
-                    name: room.template.name,
-                    description: room.template.description,
-                    exits: room.template.exits,
-                  ),
-                )
-              None -> Nil
-            }
+            send_update_to_entity(
+              state,
+              entity_id,
+              UpdateRoomDescription(
+                name: room.template.name,
+                description: room.template.description,
+                exits: room.template.exits,
+              ),
+            )
 
             actor.continue(state)
           }
@@ -159,6 +163,53 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
             )
 
             actor.continue(state)
+          }
+
+          AdminTeleport(entity_id, target_room_id) -> {
+            let assert Ok(room_id) =
+              dict.get(state.controlled_entity_room_ids, entity_id)
+            let assert Ok(room) = dict.get(state.rooms, room_id)
+            let assert Ok(entity) = dict.get(room.entities, entity_id)
+
+            case dict.get(state.rooms, target_room_id) {
+              Ok(target_room) -> {
+                send_update_to_room(
+                  state,
+                  target_room_id,
+                  UpdatePlayerTeleportedIn(get_entity_name(entity)),
+                )
+
+                let new_state =
+                  state
+                  |> move_entity(entity, room_id, target_room_id)
+
+                send_update_to_entity(
+                  state,
+                  entity_id,
+                  UpdateRoomDescription(
+                    name: target_room.template.name,
+                    description: target_room.template.description,
+                    exits: target_room.template.exits,
+                  ),
+                )
+
+                send_update_to_room(
+                  new_state,
+                  room_id,
+                  UpdatePlayerTeleportedOut(get_entity_name(entity)),
+                )
+
+                actor.continue(new_state)
+              }
+              Error(Nil) -> {
+                send_update_to_entity(
+                  state,
+                  entity_id,
+                  AdminCommandFailed("Invalid room ID"),
+                )
+                actor.continue(state)
+              }
+            }
           }
         }
       },
@@ -218,6 +269,36 @@ fn remove_entity(state: SimState, entity_id: Int, room_id: Int) -> SimState {
   )
 }
 
+fn move_entity(
+  state: SimState,
+  entity: Entity,
+  room_id: Int,
+  target_room_id: Int,
+) -> SimState {
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+  let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
+  SimState(
+    ..state,
+    controlled_entity_room_ids: dict.insert(
+      state.controlled_entity_room_ids,
+      entity.id,
+      target_room_id,
+    ),
+    rooms: state.rooms
+    |> dict.insert(
+      room_id,
+      Room(..room, entities: dict.delete(room.entities, entity.id)),
+    )
+    |> dict.insert(
+      target_room_id,
+      Room(
+        ..target_room,
+        entities: dict.insert(target_room.entities, entity.id, entity),
+      ),
+    ),
+  )
+}
+
 fn increment_next_entity_id(state: SimState) -> SimState {
   SimState(..state, next_entity_id: state.next_entity_id + 1)
 }
@@ -234,6 +315,17 @@ fn send_update_to_room(state: SimState, room_id: Int, update: Update) {
       _ -> Nil
     }
   })
+}
+
+fn send_update_to_entity(state: SimState, entity_id: Int, update: Update) {
+  let assert Ok(room_id) = dict.get(state.controlled_entity_room_ids, entity_id)
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+  let assert Ok(entity) = dict.get(room.entities, entity_id)
+
+  case entity.update_subject {
+    Some(update_subject) -> process.send(update_subject, update)
+    None -> Nil
+  }
 }
 
 type Room {
