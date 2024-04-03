@@ -116,7 +116,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
             // get all the stuff
             let assert Ok(room_id) =
               dict.get(state.controlled_entity_room_ids, entity_id)
-            let assert Ok(entity) = get_entity(state, entity_id, room_id)
+            let assert Ok(entity) = get_entity(state, room_id, entity_id)
 
             // remove the entity before sending updates
             let new_state =
@@ -153,8 +153,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
           CommandSayRoom(entity_id, text) -> {
             let assert Ok(room_id) =
               dict.get(state.controlled_entity_room_ids, entity_id)
-            let assert Ok(room) = dict.get(state.rooms, room_id)
-            let assert Ok(entity) = dict.get(room.entities, entity_id)
+            let assert Ok(entity) = get_entity(state, room_id, entity_id)
 
             send_update_to_room(
               state,
@@ -168,8 +167,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
           AdminTeleport(entity_id, target_room_id) -> {
             let assert Ok(room_id) =
               dict.get(state.controlled_entity_room_ids, entity_id)
-            let assert Ok(room) = dict.get(state.rooms, room_id)
-            let assert Ok(entity) = dict.get(room.entities, entity_id)
+            let assert Ok(entity) = get_entity(state, room_id, entity_id)
 
             case dict.get(state.rooms, target_room_id) {
               Ok(target_room) -> {
@@ -246,8 +244,8 @@ fn add_entity(state: SimState, entity: Entity, room_id: Int) -> SimState {
 
 fn get_entity(
   state: SimState,
-  entity_id: Int,
   room_id: Int,
+  entity_id: Int,
 ) -> Result(Entity, Nil) {
   use room <- result.try(dict.get(state.rooms, room_id))
   dict.get(room.entities, entity_id)
@@ -319,8 +317,7 @@ fn send_update_to_room(state: SimState, room_id: Int, update: Update) {
 
 fn send_update_to_entity(state: SimState, entity_id: Int, update: Update) {
   let assert Ok(room_id) = dict.get(state.controlled_entity_room_ids, entity_id)
-  let assert Ok(room) = dict.get(state.rooms, room_id)
-  let assert Ok(entity) = dict.get(room.entities, entity_id)
+  let assert Ok(entity) = get_entity(state, room_id, entity_id)
 
   case entity.update_subject {
     Some(update_subject) -> process.send(update_subject, update)
