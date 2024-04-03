@@ -142,6 +142,7 @@ pub fn room_descripion(
   |> bold
   |> green
   |> string.append(desc)
+  |> string.append("\n")
   |> string.append(render_exits(exits))
   |> word_wrap(width)
   |> println(conn)
