@@ -1,4 +1,5 @@
 import chromatic.{bold, bright_blue, green, magenta, red}
+import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/result
@@ -7,6 +8,7 @@ import gleam/bytes_builder
 import gleam/regex
 import glisten.{type Connection}
 import telnet/constants
+import data/world
 
 pub const logo_str = "
 
@@ -128,14 +130,45 @@ pub fn backspace(conn: Connection(_user_message)) {
   glisten.send(conn, bytes_builder.from_bit_array(constants.seq_delete))
 }
 
-pub fn room_descripion(conn: Connection(_user_message), name, desc, width) {
+pub fn room_descripion(
+  conn: Connection(_user_message),
+  name,
+  desc,
+  exits,
+  width,
+) {
   name
   |> string.append("\n")
   |> bold
   |> green
   |> string.append(desc)
+  |> string.append(render_exits(exits))
   |> word_wrap(width)
   |> println(conn)
+}
+
+fn render_exits(exits: Dict(world.Direction, Int)) -> String {
+  case dict.size(exits) {
+    0 -> "There doesn't seem to be a way out."
+    1 ->
+      "There is an exit going "
+      <> exits
+      |> dict.keys
+      |> list.first
+      |> result.unwrap(world.Up)
+      |> world.dir_to_str
+      |> bold
+      <> "."
+    _ -> {
+      "There are exits going "
+      <> exits
+      |> dict.keys
+      |> list.map(world.dir_to_str)
+      |> list.map(bold)
+      |> string.join(", ")
+      <> "."
+    }
+  }
 }
 
 pub fn player_spawned(name: String, conn: Connection(_user_message), width) {

@@ -146,12 +146,13 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
     Menu(_, _, _, _, _) -> state
     InWorld(conn, _, dim, _, _) -> {
       case update {
-        simulation.UpdateRoomDescription(name, desc) -> {
+        simulation.UpdateRoomDescription(name, desc, exits) -> {
           let assert Ok(_) =
             render.room_descripion(
               state.conn,
               name,
               desc,
+              exits,
               state.dimensions.width,
             )
         }
@@ -173,9 +174,9 @@ pub fn handle_update(state: State, update: simulation.Update) -> State {
     }
     RoomSay(conn, _, dim, _, _) -> {
       case update {
-        simulation.UpdateRoomDescription(name, desc) -> {
+        simulation.UpdateRoomDescription(name, desc, exits) -> {
           let assert Ok(_) =
-            render.room_descripion(state.conn, name, desc, dim.width)
+            render.room_descripion(state.conn, name, desc, exits, dim.width)
         }
         simulation.UpdatePlayerSpawned(name) -> {
           let assert Ok(_) = render.erase_line(dim.width, conn)

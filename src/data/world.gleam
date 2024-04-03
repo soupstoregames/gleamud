@@ -3,7 +3,6 @@ import gleam/dynamic
 import gleam/list
 import gleam/option.{Some}
 import sqlight
-import gleam/io
 
 pub type Direction {
   North
@@ -31,6 +30,21 @@ fn str_to_dir(str: String) -> Direction {
     "up" -> Up
     "down" -> Down
     _ -> Up
+  }
+}
+
+pub fn dir_to_str(dir: Direction) -> String {
+  case dir {
+    North -> "north"
+    East -> "east"
+    South -> "south"
+    West -> "west"
+    NorthEast -> "northeast"
+    SouthEast -> "southeast"
+    SouthWest -> "southwest"
+    NorthWest -> "northwest"
+    Up -> "up"
+    Down -> "down"
   }
 }
 
@@ -108,7 +122,6 @@ say <text>   say a message to the room
       }
     }
   })
-  |> io.debug
 }
 
 pub type WorldTemplate {

@@ -21,7 +21,11 @@ pub type Command {
 
 /// Updates are sent from the sim to the game mux
 pub type Update {
-  UpdateRoomDescription(name: String, description: String)
+  UpdateRoomDescription(
+    name: String,
+    description: String,
+    exits: Dict(world.Direction, Int),
+  )
   UpdatePlayerSpawned(name: String)
   UpdatePlayerQuit(name: String)
   UpdateSayRoom(name: String, text: String)
@@ -69,7 +73,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
           Tick -> actor.continue(state)
           Shutdown -> actor.continue(state)
           JoinAsGuest(update_subject, client) -> {
-            let room_id = 0
+            let room_id = 1
             let entity =
               Entity(
                 id: state.next_entity_id,
@@ -90,6 +94,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
               UpdateRoomDescription(
                 name: room.template.name,
                 description: room.template.description,
+                exits: room.template.exits,
               ),
             )
 
@@ -133,6 +138,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
                   UpdateRoomDescription(
                     name: room.template.name,
                     description: room.template.description,
+                    exits: room.template.exits,
                   ),
                 )
               None -> Nil
