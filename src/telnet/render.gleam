@@ -93,9 +93,15 @@ pub fn logo(width: Int, conn: Connection(_user_message)) {
 }
 
 pub fn menu(width: Int, conn: Connection(_user_message)) {
-  { "Type " <> bold("guest") <> " to join with a temporary character" }
-  |> center(width)
-  |> println(conn)
+  let assert Ok(_) =
+    { "Type " <> bold("guest") <> " to join with a temporary character" }
+    |> center(width)
+    |> println(conn)
+
+  let assert Ok(_) =
+    { "Type " <> bold("quit") <> " to disconnect" }
+    |> center(width)
+    |> println(conn)
 }
 
 pub fn prompt(conn: Connection(_user_message)) {

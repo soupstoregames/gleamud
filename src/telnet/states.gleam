@@ -78,6 +78,12 @@ pub fn handle_input(state: State, data: BitArray) -> State {
             )
           InWorld(conn, update_subject, dim, entity_id, sim_subject)
         }
+
+        "quit" -> {
+          let assert Ok(_) =
+            transport.close(state.conn.transport, state.conn.socket)
+          state
+        }
         _ -> state
       }
     }
