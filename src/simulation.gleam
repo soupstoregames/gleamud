@@ -8,7 +8,6 @@ import gleam/result
 import data/entity as dataentity
 import data/prefabs
 import data/world
-import gleam/io
 
 /// Commands are sent from game connections to entities
 pub type Command {
@@ -33,10 +32,11 @@ pub type Update {
   UpdatePlayerSpawned(name: String)
   UpdatePlayerQuit(name: String)
   UpdateSayRoom(name: String, text: String)
+
+  // admin stuff
+  AdminCommandFailed(reason: String)
   UpdatePlayerTeleportedOut(name: String)
   UpdatePlayerTeleportedIn(name: String)
-
-  AdminCommandFailed(reason: String)
 }
 
 type SimState {
