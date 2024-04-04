@@ -93,85 +93,81 @@ fn handle_dimensions(
 }
 
 fn handle_data(state: State, data: BitArray) -> actor.Next(Message, State) {
-  let assert Ok(string) = bit_array.to_string(data)
-  let new_state = case state.mode {
+  actor.continue(case state.mode {
     FirstIAC -> state
-    Menu -> {
-      let assert Ok(msg) = bit_array.to_string(data)
-      case string.trim(msg) {
-        "guest" -> {
-          let assert Ok(entity_id) =
-            process.call(
-              state.sim_subject,
-              simulation.JoinAsGuest(state.update_subject, _),
-              1000,
-            )
-          State(..state, mode: Command, entity_id: entity_id)
-        }
+    Menu -> handle_data_menu(state, data)
+    Command -> handle_data_command(state, data)
+    RoomSay -> handle_data_room_say(state, data)
+  })
+}
 
-        "quit" -> {
+fn handle_data_menu(state: State, data: BitArray) -> State {
+  let assert Ok(msg) = bit_array.to_string(data)
+  case string.trim(msg) {
+    "guest" -> {
+      let assert Ok(entity_id) =
+        process.call(
+          state.sim_subject,
+          simulation.JoinAsGuest(state.update_subject, _),
+          1000,
+        )
+      State(..state, mode: Command, entity_id: entity_id)
+    }
+
+    "quit" -> {
+      let assert Ok(_) =
+        transport.close(state.conn.transport, state.conn.socket)
+      state
+    }
+    _ -> state
+  }
+}
+
+fn handle_data_command(state: State, data: BitArray) -> State {
+  let assert Ok(msg) = bit_array.to_string(data)
+  case string.trim(msg) {
+    "/say" -> on_enter(State(..state, mode: RoomSay))
+    _ as trimmed -> {
+      case parse_command(state.entity_id, trimmed) {
+        Error(UnknownCommand) -> {
+          let assert Ok(_) = render.error(state.conn, "Huh?")
+          let assert Ok(_) = render.prompt_command(state.conn)
+          Nil
+        }
+        Error(InvalidCommand) -> {
+          let assert Ok(_) = render.error(state.conn, "Invalid command args")
+          let assert Ok(_) = render.prompt_command(state.conn)
+          Nil
+        }
+        Error(SayWhat) -> {
+          let assert Ok(_) = render.error(state.conn, "Say what?")
+          let assert Ok(_) = render.prompt_command(state.conn)
+          Nil
+        }
+        Ok(simulation.CommandQuit(_) as com) -> {
           let assert Ok(_) =
             transport.close(state.conn.transport, state.conn.socket)
-          state
+          process.send(state.sim_subject, com)
         }
-        _ -> state
+        Ok(com) -> process.send(state.sim_subject, com)
       }
-    }
-    Command -> {
-      let assert Ok(msg) = bit_array.to_string(data)
-      case string.trim(msg) {
-        "/say" ->
-          State(..state, mode: RoomSay)
-          |> on_enter
-        _ as trimmed -> {
-          case parse_command(state.entity_id, trimmed) {
-            Ok(simulation.CommandQuit(_) as com) -> {
-              let assert Ok(_) =
-                transport.close(state.conn.transport, state.conn.socket)
-              process.send(state.sim_subject, com)
-              Nil
-            }
-            Ok(com) -> {
-              process.send(state.sim_subject, com)
-            }
-            Error(UnknownCommand) -> {
-              let assert Ok(_) = render.error(state.conn, "Huh?")
-              let assert Ok(_) = render.prompt_command(state.conn)
-              Nil
-            }
-            Error(InvalidCommand) -> {
-              let assert Ok(_) =
-                render.error(state.conn, "Invalid command args")
-              let assert Ok(_) = render.prompt_command(state.conn)
-              Nil
-            }
-            Error(SayWhat) -> {
-              let assert Ok(_) = render.error(state.conn, "Say what?")
-              let assert Ok(_) = render.prompt_command(state.conn)
-              Nil
-            }
-          }
-          State(..state, mode: Command)
-        }
-      }
-    }
-    RoomSay -> {
-      let assert Ok(msg) = bit_array.to_string(data)
-      case string.trim(msg) {
-        "/e" ->
-          State(..state, mode: Command)
-          |> on_enter
-        _ as trimmed -> {
-          process.send(
-            state.sim_subject,
-            simulation.CommandSayRoom(state.entity_id, trimmed),
-          )
-          state
-        }
-      }
+      state
     }
   }
-  actor.continue(new_state)
+}
+
+fn handle_data_room_say(state: State, data: BitArray) -> State {
+  let assert Ok(msg) = bit_array.to_string(data)
+  case string.trim(msg) {
+    "/e" -> on_enter(State(..state, mode: Command))
+    _ as trimmed -> {
+      process.send(
+        state.sim_subject,
+        simulation.CommandSayRoom(state.entity_id, trimmed),
+      )
+      state
+    }
+  }
 }
 
 fn handle_update(
