@@ -48,10 +48,23 @@ type SimState {
   )
 }
 
+type Room {
+  Room(template: world.RoomTemplate, entities: Dict(Int, Entity))
+}
+
+type Entity {
+  Entity(
+    id: Int,
+    data: dataentity.Entity,
+    update_subject: Option(Subject(Update)),
+  )
+}
+
 type ControlledEntity {
   ControlledEntity(room_id: Int, update_subject: Subject(Update))
 }
 
+// actor functions
 pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
   // data loading
   let world = world.load_world(conn_string)
@@ -108,7 +121,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
       send_update_to_room(
         state,
         room_id,
-        UpdatePlayerSpawned(get_entity_name(entity)),
+        UpdatePlayerSpawned(query_entity_name(entity)),
       )
 
       let assert Ok(room) = dict.get(state.rooms, room_id)
@@ -143,7 +156,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
       send_update_to_room(
         new_state,
         controlled_entity.room_id,
-        UpdatePlayerQuit(get_entity_name(entity)),
+        UpdatePlayerQuit(query_entity_name(entity)),
       )
 
       // continue without the entity
@@ -174,7 +187,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
       send_update_to_room(
         state,
         controlled_entity.room_id,
-        UpdateSayRoom(get_entity_name(entity), text),
+        UpdateSayRoom(query_entity_name(entity), text),
       )
 
       actor.continue(state)
@@ -191,7 +204,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
           send_update_to_room(
             state,
             target_room_id,
-            UpdateEntityTeleportedIn(get_entity_name(entity)),
+            UpdateEntityTeleportedIn(query_entity_name(entity)),
           )
 
           let new_state =
@@ -210,7 +223,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
           send_update_to_room(
             new_state,
             controlled_entity.room_id,
-            UpdateEntityTeleportedOut(get_entity_name(entity)),
+            UpdateEntityTeleportedOut(query_entity_name(entity)),
           )
 
           actor.continue(new_state)
@@ -231,6 +244,7 @@ pub fn stop(subject: Subject(Command)) {
   process.send(subject, Shutdown)
 }
 
+// state functions
 fn add_entity(state: SimState, entity: Entity, room_id: Int) -> SimState {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   case entity.update_subject {
@@ -258,15 +272,6 @@ fn add_entity(state: SimState, entity: Entity, room_id: Int) -> SimState {
         ),
       )
   }
-}
-
-fn get_entity(
-  state: SimState,
-  room_id: Int,
-  entity_id: Int,
-) -> Result(Entity, Nil) {
-  use room <- result.try(dict.get(state.rooms, room_id))
-  dict.get(room.entities, entity_id)
 }
 
 fn remove_entity(state: SimState, entity_id: Int, room_id: Int) -> SimState {
@@ -336,6 +341,7 @@ fn increment_next_entity_id(state: SimState) -> SimState {
   SimState(..state, next_entity_id: state.next_entity_id + 1)
 }
 
+// procedures
 fn send_update_to_room(state: SimState, room_id: Int, update: Update) {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   room.entities
@@ -350,19 +356,16 @@ fn send_update_to_room(state: SimState, room_id: Int, update: Update) {
   })
 }
 
-type Room {
-  Room(template: world.RoomTemplate, entities: Dict(Int, Entity))
+fn get_entity(
+  state: SimState,
+  room_id: Int,
+  entity_id: Int,
+) -> Result(Entity, Nil) {
+  use room <- result.try(dict.get(state.rooms, room_id))
+  dict.get(room.entities, entity_id)
 }
 
-type Entity {
-  Entity(
-    id: Int,
-    data: dataentity.Entity,
-    update_subject: Option(Subject(Update)),
-  )
-}
-
-fn get_entity_name(entity: Entity) -> String {
+fn query_entity_name(entity: Entity) -> String {
   let query =
     entity.data
     |> dataentity.query(dataentity.QueryName(None))
