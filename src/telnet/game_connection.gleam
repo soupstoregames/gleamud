@@ -8,7 +8,6 @@ import gleam/bit_array
 import glisten
 import glisten/transport
 import telnet/render
-import telnet/states
 import simulation
 
 pub type Message {
@@ -17,17 +16,23 @@ pub type Message {
   Update(simulation.Update)
 }
 
-type ClientParams {
-  ClientParams(width: Int, height: Int)
+type State {
+  State(
+    tcp_subject: Subject(Message),
+    sim_subject: Subject(simulation.Command),
+    update_subject: Subject(simulation.Update),
+    conn: glisten.Connection(BitArray),
+    size: #(Int, Int),
+    mode: Mode,
+    entity_id: Int,
+  )
 }
 
-type ConnState {
-  ConnState(
-    tcp_subject: Subject(Message),
-    client_params: ClientParams,
-    game_state: states.StateData,
-    conn: glisten.Connection(BitArray),
-  )
+type Mode {
+  FirstIAC
+  Menu
+  Command
+  RoomSay
 }
 
 pub fn start(
@@ -48,11 +53,14 @@ pub fn start(
         |> process.selecting(update_subject, fn(msg) { Update(msg) })
 
       actor.Ready(
-        ConnState(
+        State(
           tcp_subject,
-          ClientParams(80, 24),
-          states.StateData(states.FirstIAC, update_subject, sim_subject, 0),
+          sim_subject,
+          update_subject,
           conn,
+          #(80, 24),
+          FirstIAC,
+          0,
         ),
         selector,
       )
@@ -62,10 +70,7 @@ pub fn start(
   ))
 }
 
-fn handle_message(
-  message: Message,
-  state: ConnState,
-) -> actor.Next(Message, ConnState) {
+fn handle_message(message: Message, state: State) -> actor.Next(Message, State) {
   case message {
     Dimensions(width, height) -> handle_dimensions(state, width, height)
     Data(bits) -> handle_data(state, bits)
@@ -74,134 +79,53 @@ fn handle_message(
 }
 
 fn handle_dimensions(
-  state: ConnState,
+  state: State,
   width: Int,
   height: Int,
-) -> actor.Next(Message, ConnState) {
-  // move this into state
-  let new_state = case state.game_state.current_state {
-    states.FirstIAC -> {
-      let assert Ok(_) = render.logo(width, state.conn)
-      let assert Ok(_) = render.menu(width, state.conn)
-      let assert Ok(_) = render.prompt(state.conn)
-      states.Menu
-    }
-    states.Menu -> {
-      let assert Ok(_) = render.logo(width, state.conn)
-      let assert Ok(_) = render.menu(width, state.conn)
-      let assert Ok(_) = render.prompt(state.conn)
-      states.Menu
-    }
-    states.InWorld -> {
-      let assert Ok(_) = render.prompt(state.conn)
-      states.InWorld
-    }
-    states.RoomSay -> {
-      let assert Ok(_) = render.prompt_say(state.conn)
-      states.RoomSay
-    }
+) -> actor.Next(Message, State) {
+  let state = case state.mode {
+    FirstIAC ->
+      State(..state, mode: Menu, size: #(width, height))
+      |> on_enter
+    _ -> State(..state, size: #(width, height))
   }
-  actor.continue(
-    ConnState(
-      ..state,
-      game_state: states.StateData(..state.game_state, current_state: new_state),
-      client_params: ClientParams(width: width, height: height),
-    ),
-  )
+  actor.continue(state)
 }
 
-fn handle_data(
-  state: ConnState,
-  data: BitArray,
-) -> actor.Next(Message, ConnState) {
+fn handle_data(state: State, data: BitArray) -> actor.Next(Message, State) {
   let new_state = handle_input(state, data)
   actor.continue(new_state)
 }
 
 fn handle_update(
-  state: ConnState,
+  state: State,
   update: simulation.Update,
-) -> actor.Next(Message, ConnState) {
-  let ConnState(_tcp_subject, client_params, game_state, conn) = state
-  case game_state.current_state {
-    states.InWorld -> {
-      case update {
-        simulation.UpdateRoomDescription(name, desc, exits) -> {
-          let assert Ok(_) =
-            render.room_descripion(conn, name, desc, exits, client_params.width)
-        }
-        simulation.UpdatePlayerSpawned(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.player_spawned(name, conn, client_params.width)
-        }
-        simulation.UpdatePlayerQuit(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) = render.player_quit(name, conn, client_params.width)
-        }
-        simulation.UpdateSayRoom(name, text) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.speech(name, text, conn, client_params.width)
-        }
-        simulation.UpdatePlayerTeleportedOut(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.entity_teleported_out(name, conn, client_params.width)
-        }
-        simulation.UpdatePlayerTeleportedIn(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.entity_teleported_in(name, conn, client_params.width)
-        }
-        simulation.AdminCommandFailed(reason) -> {
-          let assert Ok(_) =
-            render.admin_command_failed(reason, conn, client_params.width)
-        }
-      }
-      let assert Ok(_) = render.prompt(conn)
-      Nil
+) -> actor.Next(Message, State) {
+  let assert Ok(_) = case update {
+    simulation.UpdateRoomDescription(name, desc, exits) ->
+      render.room_descripion(state.conn, name, desc, exits, state.size.0)
+    simulation.UpdatePlayerSpawned(name) ->
+      render.player_spawned(state.conn, state.size.0, name)
+    simulation.UpdatePlayerQuit(name) ->
+      render.player_quit(state.conn, state.size.0, name)
+    simulation.UpdateSayRoom(name, text) ->
+      render.speech(state.conn, state.size.0, name, text)
+    simulation.UpdatePlayerTeleportedOut(name) ->
+      render.entity_teleported_out(state.conn, state.size.0, name)
+    simulation.UpdatePlayerTeleportedIn(name) ->
+      render.entity_teleported_in(state.conn, state.size.0, name)
+    simulation.AdminCommandFailed(reason) ->
+      render.admin_command_failed(state.conn, state.size.0, reason)
+  }
+  case state.mode {
+    Command -> {
+      let assert Ok(_) = render.prompt_command(state.conn)
+      // renamed this to match the mode pattern
     }
-    states.RoomSay -> {
-      case update {
-        simulation.UpdateRoomDescription(name, desc, exits) -> {
-          let assert Ok(_) =
-            render.room_descripion(conn, name, desc, exits, client_params.width)
-        }
-        simulation.UpdatePlayerSpawned(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.player_spawned(name, conn, client_params.width)
-        }
-        simulation.UpdatePlayerQuit(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) = render.player_quit(name, conn, client_params.width)
-        }
-        simulation.UpdateSayRoom(name, text) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.speech(name, text, conn, client_params.width)
-        }
-        simulation.UpdatePlayerTeleportedOut(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.entity_teleported_out(name, conn, client_params.width)
-        }
-        simulation.UpdatePlayerTeleportedIn(name) -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          let assert Ok(_) =
-            render.entity_teleported_out(name, conn, client_params.width)
-        }
-        simulation.AdminCommandFailed(reason) -> {
-          let assert Ok(_) =
-            render.admin_command_failed(reason, conn, client_params.width)
-        }
-      }
-
-      let assert Ok(_) = render.prompt_say(conn)
-      Nil
+    RoomSay -> {
+      let assert Ok(_) = render.prompt_say(state.conn)
     }
-    _ -> Nil
+    _ -> Ok(Nil)
   }
   actor.continue(state)
 }
@@ -239,94 +163,82 @@ fn parse_command(
   }
 }
 
-/// convenience function to update the current state inside the ConnState's game_state
-fn update_current_state(cs: ConnState, state: states.State) -> ConnState {
-  ConnState(
-    ..cs,
-    game_state: states.StateData(..cs.game_state, current_state: state),
-  )
-}
-
-fn handle_input(state: ConnState, data: BitArray) -> ConnState {
+fn handle_input(state: State, data: BitArray) -> State {
   let assert Ok(string) = bit_array.to_string(data)
-  let ConnState(
-    _tcp_subject,
-    client_params,
-    states.StateData(current_state, up_sub, sim_sub, entity_id),
-    conn,
-  ) = state
-  case current_state {
-    states.FirstIAC -> state
-    states.Menu -> {
+  case state.mode {
+    FirstIAC -> state
+    Menu -> {
       let assert Ok(msg) = bit_array.to_string(data)
       case string.trim(msg) {
         "guest" -> {
           let assert Ok(entity_id) =
-            process.call(sim_sub, simulation.JoinAsGuest(up_sub, _), 1000)
-          ConnState(
-            ..state,
-            game_state: states.StateData(
-              ..state.game_state,
-              current_state: states.InWorld,
-              entity_id: entity_id,
-            ),
-          )
+            process.call(
+              state.sim_subject,
+              simulation.JoinAsGuest(state.update_subject, _),
+              1000,
+            )
+          State(..state, mode: Command, entity_id: entity_id)
         }
 
         "quit" -> {
-          let assert Ok(_) = transport.close(conn.transport, conn.socket)
+          let assert Ok(_) =
+            transport.close(state.conn.transport, state.conn.socket)
           state
         }
         _ -> state
       }
     }
-    states.InWorld -> {
+    Command -> {
       let assert Ok(msg) = bit_array.to_string(data)
       let trimmed = string.trim(msg)
       case trimmed {
         "/say" ->
-          update_current_state(state, states.RoomSay)
+          State(..state, mode: RoomSay)
           |> on_enter
         _ as str -> {
-          case parse_command(entity_id, str) {
+          case parse_command(state.entity_id, str) {
             Ok(simulation.CommandQuit(_) as com) -> {
-              let assert Ok(_) = transport.close(conn.transport, conn.socket)
-              process.send(sim_sub, com)
+              let assert Ok(_) =
+                transport.close(state.conn.transport, state.conn.socket)
+              process.send(state.sim_subject, com)
               Nil
             }
             Ok(com) -> {
-              process.send(sim_sub, com)
+              process.send(state.sim_subject, com)
             }
             Error(UnknownCommand) -> {
-              let assert Ok(_) = render.error("Huh?", conn)
-              let assert Ok(_) = render.prompt(conn)
+              let assert Ok(_) = render.error(state.conn, "Huh?")
+              let assert Ok(_) = render.prompt_command(state.conn)
               Nil
             }
             Error(InvalidCommand) -> {
-              let assert Ok(_) = render.error("Invalid command args", conn)
-              let assert Ok(_) = render.prompt(conn)
+              let assert Ok(_) =
+                render.error(state.conn, "Invalid command args")
+              let assert Ok(_) = render.prompt_command(state.conn)
               Nil
             }
             Error(SayWhat) -> {
-              let assert Ok(_) = render.error("Say what?", conn)
-              let assert Ok(_) = render.prompt(conn)
+              let assert Ok(_) = render.error(state.conn, "Say what?")
+              let assert Ok(_) = render.prompt_command(state.conn)
               Nil
             }
           }
-          update_current_state(state, states.InWorld)
+          State(..state, mode: Command)
         }
       }
     }
-    states.RoomSay -> {
+    RoomSay -> {
       let assert Ok(msg) = bit_array.to_string(data)
       let trimmed = string.trim(msg)
       case trimmed {
         "/e" ->
-          update_current_state(state, states.InWorld)
+          State(..state, mode: Command)
           |> on_enter
         _ -> {
-          let assert Ok(_) = render.erase_line(client_params.width, conn)
-          process.send(sim_sub, simulation.CommandSayRoom(entity_id, trimmed))
+          process.send(
+            state.sim_subject,
+            simulation.CommandSayRoom(state.entity_id, trimmed),
+          )
           state
         }
       }
@@ -334,22 +246,21 @@ fn handle_input(state: ConnState, data: BitArray) -> ConnState {
   }
 }
 
-fn on_enter(state: ConnState) -> ConnState {
-  let ConnState(_tcp_subject, client_params, game_state, conn) = state
-  case game_state.current_state {
-    states.FirstIAC -> state
-    states.Menu -> {
-      let assert Ok(_) = render.logo(client_params.width, conn)
-      let assert Ok(_) = render.menu(client_params.width, conn)
-      let assert Ok(_) = render.prompt(conn)
+fn on_enter(state: State) -> State {
+  case state.mode {
+    FirstIAC -> state
+    Menu -> {
+      let assert Ok(_) = render.logo(state.conn, state.size.0)
+      let assert Ok(_) = render.menu(state.conn, state.size.0)
+      let assert Ok(_) = render.prompt_command(state.conn)
       state
     }
-    states.InWorld -> {
-      let assert Ok(_) = render.prompt(conn)
+    Command -> {
+      let assert Ok(_) = render.prompt_command(state.conn)
       state
     }
-    states.RoomSay -> {
-      let assert Ok(_) = render.prompt_say(conn)
+    RoomSay -> {
+      let assert Ok(_) = render.prompt_say(state.conn)
       state
     }
   }

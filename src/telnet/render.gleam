@@ -67,7 +67,7 @@ pub fn word_wrap(input: String, max_width: Int) {
   |> string.join("\n")
 }
 
-pub fn print(str: String, conn: Connection(_user_message)) {
+pub fn print(conn: Connection(_user_message), str: String) {
   glisten.send(
     conn,
     str
@@ -76,7 +76,7 @@ pub fn print(str: String, conn: Connection(_user_message)) {
   )
 }
 
-pub fn println(str: String, conn: Connection(_user_message)) {
+pub fn println(conn: Connection(_user_message), str: String) {
   glisten.send(
     conn,
     str
@@ -86,43 +86,43 @@ pub fn println(str: String, conn: Connection(_user_message)) {
   )
 }
 
-pub fn logo(width: Int, conn: Connection(_user_message)) {
+pub fn logo(conn: Connection(_user_message), width: Int) {
   logo_str
   |> center(width)
   |> magenta
   |> bold
-  |> println(conn)
+  |> println(conn, _)
 }
 
-pub fn menu(width: Int, conn: Connection(_user_message)) {
+pub fn menu(conn: Connection(_user_message), width: Int) {
   let assert Ok(_) =
     { "Type " <> bold("guest") <> " to join with a temporary character" }
     |> center(width)
-    |> println(conn)
+    |> println(conn, _)
 
   let assert Ok(_) =
     { "Type " <> bold("quit") <> " to disconnect" }
     |> center(width)
-    |> println(conn)
+    |> println(conn, _)
 }
 
-pub fn prompt(conn: Connection(_user_message)) {
-  print("> ", conn)
+pub fn prompt_command(conn: Connection(_user_message)) {
+  print(conn, "> ")
 }
 
 pub fn prompt_say(conn: Connection(_user_message)) {
-  print("say> ", conn)
+  print(conn, "say> ")
 }
 
-pub fn erase_line(length, conn: Connection(_user_message)) {
-  print("\r" <> string.repeat(" ", length) <> "\r", conn)
+pub fn erase_line(conn: Connection(_user_message), length: Int) {
+  print(conn, "\r" <> string.repeat(" ", length) <> "\r")
 }
 
-pub fn error(str: String, conn: Connection(_user_message)) {
+pub fn error(conn: Connection(_user_message), str: String) {
   println(
+    conn,
     str
       |> red,
-    conn,
   )
 }
 
@@ -145,7 +145,7 @@ pub fn room_descripion(
   |> string.append("\n")
   |> string.append(render_exits(exits))
   |> word_wrap(width)
-  |> println(conn)
+  |> println(conn, _)
 }
 
 fn render_exits(exits: Dict(world.Direction, Int)) -> String {
@@ -172,75 +172,80 @@ fn render_exits(exits: Dict(world.Direction, Int)) -> String {
   }
 }
 
-pub fn player_spawned(name: String, conn: Connection(_user_message), width) {
+pub fn player_spawned(conn: Connection(_user_message), width, name: String) {
+  let assert Ok(_) = erase_line(conn, width)
   name
   |> string.append(" blinks into existance.")
   |> bold
   |> bright_blue
   |> word_wrap(width)
-  |> println(conn)
+  |> println(conn, _)
 }
 
-pub fn player_quit(name: String, conn: Connection(_user_message), width) {
+pub fn player_quit(conn: Connection(_user_message), width: Int, name: String) {
+  let assert Ok(_) = erase_line(conn, width)
   name
   |> string.append(" fades into non-existence.")
   |> bold
   |> bright_blue
   |> word_wrap(width)
-  |> println(conn)
+  |> println(conn, _)
 }
 
 pub fn entity_teleported_out(
-  name: String,
   conn: Connection(_user_message),
   width,
+  name: String,
 ) {
+  let assert Ok(_) = erase_line(conn, width)
   name
   |> string.append(" apparates into thin air.")
   |> bold
   |> bright_blue
   |> word_wrap(width)
-  |> println(conn)
+  |> println(conn, _)
 }
 
 pub fn entity_teleported_in(
-  name: String,
   conn: Connection(_user_message),
   width,
+  name: String,
 ) {
+  let assert Ok(_) = erase_line(conn, width)
   name
   |> string.append(" apparates from thin air.")
   |> bold
   |> bright_blue
   |> word_wrap(width)
-  |> println(conn)
+  |> println(conn, _)
 }
 
 pub fn admin_command_failed(
-  reason: String,
   conn: Connection(_user_message),
   width,
+  reason: String,
 ) {
   reason
   |> bold
   |> red
   |> word_wrap(width)
-  |> println(conn)
+  |> println(conn, _)
 }
 
 pub fn speech(
-  name: String,
-  text: String,
   conn: Connection(_user_message),
   width,
+  name: String,
+  text: String,
 ) {
+  let assert Ok(_) = erase_line(conn, width)
   name
   |> bold
   |> string.append(" says \"")
   |> string.append(text)
   |> string.append("\"")
   |> word_wrap(width)
-  |> println(conn)
+  |> println(conn, _)
 }
 
 fn center(str: String, width: Int) -> String {
