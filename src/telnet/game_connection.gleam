@@ -191,9 +191,10 @@ fn handle_update(
       render.admin_command_failed(state.conn, state.size.0, reason)
   }
   let assert Ok(_) = case state.mode {
+    FirstIAC -> Ok(Nil)
+    Menu -> Ok(Nil)
     Command -> render.prompt_command(state.conn)
     RoomSay -> render.prompt_say(state.conn)
-    _ -> Ok(Nil)
   }
   actor.continue(state)
 }
