@@ -117,14 +117,9 @@ fn handle_update(
     simulation.AdminCommandFailed(reason) ->
       render.admin_command_failed(state.conn, state.size.0, reason)
   }
-  case state.mode {
-    Command -> {
-      let assert Ok(_) = render.prompt_command(state.conn)
-      // renamed this to match the mode pattern
-    }
-    RoomSay -> {
-      let assert Ok(_) = render.prompt_say(state.conn)
-    }
+  let assert Ok(_) = case state.mode {
+    Command -> render.prompt_command(state.conn)
+    RoomSay -> render.prompt_say(state.conn)
     _ -> Ok(Nil)
   }
   actor.continue(state)
@@ -143,7 +138,7 @@ fn parse_command(
   case string.split(str, " ") {
     ["quit", ..] -> Ok(simulation.CommandQuit(entity_id))
     ["look", ..] -> Ok(simulation.CommandLook(entity_id))
-    ["say", ..rest] -> {
+    ["say", ..rest] ->
       case list.length(rest) {
         0 -> Error(SayWhat)
         _ ->
@@ -152,13 +147,11 @@ fn parse_command(
             text: string.join(rest, " "),
           ))
       }
-    }
-    ["@tp", room, ..] -> {
+    ["@tp", room, ..] ->
       case int.parse(room) {
         Ok(room_num) -> Ok(simulation.AdminTeleport(entity_id, room_num))
         Error(Nil) -> Error(InvalidCommand)
       }
-    }
     _ -> Error(UnknownCommand)
   }
 }
@@ -190,13 +183,12 @@ fn handle_input(state: State, data: BitArray) -> State {
     }
     Command -> {
       let assert Ok(msg) = bit_array.to_string(data)
-      let trimmed = string.trim(msg)
-      case trimmed {
+      case string.trim(msg) {
         "/say" ->
           State(..state, mode: RoomSay)
           |> on_enter
-        _ as str -> {
-          case parse_command(state.entity_id, str) {
+        _ as trimmed -> {
+          case parse_command(state.entity_id, trimmed) {
             Ok(simulation.CommandQuit(_) as com) -> {
               let assert Ok(_) =
                 transport.close(state.conn.transport, state.conn.socket)
@@ -229,12 +221,11 @@ fn handle_input(state: State, data: BitArray) -> State {
     }
     RoomSay -> {
       let assert Ok(msg) = bit_array.to_string(data)
-      let trimmed = string.trim(msg)
-      case trimmed {
+      case string.trim(msg) {
         "/e" ->
           State(..state, mode: Command)
           |> on_enter
-        _ -> {
+        _ as trimmed -> {
           process.send(
             state.sim_subject,
             simulation.CommandSayRoom(state.entity_id, trimmed),
