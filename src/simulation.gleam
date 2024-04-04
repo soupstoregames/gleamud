@@ -41,7 +41,7 @@ pub type Update {
 
 type SimState {
   SimState(
-    next_entity_id: Int,
+    next_temp_entity_id: Int,
     sim_subject: Subject(Command),
     rooms: Dict(Int, Room),
     controlled_entities: Dict(Int, ControlledEntity),
@@ -112,7 +112,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
       let room_id = 0
       let entity =
         Entity(
-          id: state.next_entity_id,
+          id: state.next_temp_entity_id,
           data: prefabs.create_guest_player(),
           update_subject: Some(update_subject),
         )
@@ -137,7 +137,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
       actor.continue(
         state
         |> add_entity(entity, room_id)
-        |> increment_next_entity_id,
+        |> increment_next_temp_entity_id,
       )
     }
     CommandQuit(entity_id) -> {
@@ -337,8 +337,8 @@ fn move_entity(
   }
 }
 
-fn increment_next_entity_id(state: SimState) -> SimState {
-  SimState(..state, next_entity_id: state.next_entity_id - 1)
+fn increment_next_temp_entity_id(state: SimState) -> SimState {
+  SimState(..state, next_temp_entity_id: state.next_temp_entity_id - 1)
 }
 
 // procedures
