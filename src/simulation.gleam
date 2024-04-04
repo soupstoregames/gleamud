@@ -35,8 +35,8 @@ pub type Update {
 
   // admin stuff
   AdminCommandFailed(reason: String)
-  UpdatePlayerTeleportedOut(name: String)
-  UpdatePlayerTeleportedIn(name: String)
+  UpdateEntityTeleportedOut(name: String)
+  UpdateEntityTeleportedIn(name: String)
 }
 
 type SimState {
@@ -80,146 +80,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
         actor.Ready(SimState(0, sim_subject, rooms, dict.new()), selector)
       },
       init_timeout: 1000,
-      loop: fn(message, state) -> actor.Next(Command, SimState) {
-        case message {
-          Tick -> actor.continue(state)
-          Shutdown -> actor.continue(state)
-          JoinAsGuest(update_subject, client) -> {
-            let room_id = 0
-            let entity =
-              Entity(
-                id: state.next_entity_id,
-                data: prefabs.create_guest_player(),
-                update_subject: Some(update_subject),
-              )
-            process.send(client, Ok(entity.id))
-
-            send_update_to_room(
-              state,
-              room_id,
-              UpdatePlayerSpawned(get_entity_name(entity)),
-            )
-
-            let assert Ok(room) = dict.get(state.rooms, room_id)
-            process.send(
-              update_subject,
-              UpdateRoomDescription(
-                name: room.template.name,
-                description: room.template.description,
-                exits: room.template.exits,
-              ),
-            )
-
-            actor.continue(
-              state
-              |> add_entity(entity, room_id)
-              |> increment_next_entity_id,
-            )
-          }
-          CommandQuit(entity_id) -> {
-            // get all the stuff
-            let assert Ok(controlled_entity) =
-              dict.get(state.controlled_entities, entity_id)
-            let assert Ok(entity) =
-              get_entity(state, controlled_entity.room_id, entity_id)
-
-            // remove the entity before sending updates
-            let new_state =
-              state
-              |> remove_entity(entity_id, controlled_entity.room_id)
-
-            // tell all other controlled entities in that room that the player quit
-            send_update_to_room(
-              new_state,
-              controlled_entity.room_id,
-              UpdatePlayerQuit(get_entity_name(entity)),
-            )
-
-            // continue without the entity
-            actor.continue(new_state)
-          }
-          CommandLook(entity_id) -> {
-            let assert Ok(controlled_entity) =
-              dict.get(state.controlled_entities, entity_id)
-            let assert Ok(room) =
-              dict.get(state.rooms, controlled_entity.room_id)
-
-            process.send(
-              controlled_entity.update_subject,
-              UpdateRoomDescription(
-                name: room.template.name,
-                description: room.template.description,
-                exits: room.template.exits,
-              ),
-            )
-
-            actor.continue(state)
-          }
-          CommandSayRoom(entity_id, text) -> {
-            let assert Ok(controlled_entity) =
-              dict.get(state.controlled_entities, entity_id)
-            let assert Ok(entity) =
-              get_entity(state, controlled_entity.room_id, entity_id)
-
-            send_update_to_room(
-              state,
-              controlled_entity.room_id,
-              UpdateSayRoom(get_entity_name(entity), text),
-            )
-
-            actor.continue(state)
-          }
-
-          AdminTeleport(entity_id, target_room_id) -> {
-            let assert Ok(controlled_entity) =
-              dict.get(state.controlled_entities, entity_id)
-            let assert Ok(entity) =
-              get_entity(state, controlled_entity.room_id, entity_id)
-
-            case dict.get(state.rooms, target_room_id) {
-              Ok(target_room) -> {
-                send_update_to_room(
-                  state,
-                  target_room_id,
-                  UpdatePlayerTeleportedIn(get_entity_name(entity)),
-                )
-
-                let new_state =
-                  state
-                  |> move_entity(
-                    entity,
-                    controlled_entity.room_id,
-                    target_room_id,
-                  )
-
-                process.send(
-                  controlled_entity.update_subject,
-                  UpdateRoomDescription(
-                    name: target_room.template.name,
-                    description: target_room.template.description,
-                    exits: target_room.template.exits,
-                  ),
-                )
-
-                send_update_to_room(
-                  new_state,
-                  controlled_entity.room_id,
-                  UpdatePlayerTeleportedOut(get_entity_name(entity)),
-                )
-
-                actor.continue(new_state)
-              }
-              Error(Nil) -> {
-                process.send(
-                  controlled_entity.update_subject,
-                  AdminCommandFailed("Invalid room ID"),
-                )
-                actor.continue(state)
-              }
-            }
-          }
-        }
-      },
+      loop: loop,
     ))
 
   let assert Ok(sim_subject) = process.receive(parent_subject, 1000)
@@ -227,6 +88,142 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
   case start_result {
     Ok(_) -> Ok(sim_subject)
     Error(err) -> Error(err)
+  }
+}
+
+fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
+  case message {
+    Tick -> actor.continue(state)
+    Shutdown -> actor.continue(state)
+    JoinAsGuest(update_subject, client) -> {
+      let room_id = 0
+      let entity =
+        Entity(
+          id: state.next_entity_id,
+          data: prefabs.create_guest_player(),
+          update_subject: Some(update_subject),
+        )
+      process.send(client, Ok(entity.id))
+
+      send_update_to_room(
+        state,
+        room_id,
+        UpdatePlayerSpawned(get_entity_name(entity)),
+      )
+
+      let assert Ok(room) = dict.get(state.rooms, room_id)
+      process.send(
+        update_subject,
+        UpdateRoomDescription(
+          name: room.template.name,
+          description: room.template.description,
+          exits: room.template.exits,
+        ),
+      )
+
+      actor.continue(
+        state
+        |> add_entity(entity, room_id)
+        |> increment_next_entity_id,
+      )
+    }
+    CommandQuit(entity_id) -> {
+      // get all the stuff
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+      let assert Ok(entity) =
+        get_entity(state, controlled_entity.room_id, entity_id)
+
+      // remove the entity before sending updates
+      let new_state =
+        state
+        |> remove_entity(entity_id, controlled_entity.room_id)
+
+      // tell all other controlled entities in that room that the player quit
+      send_update_to_room(
+        new_state,
+        controlled_entity.room_id,
+        UpdatePlayerQuit(get_entity_name(entity)),
+      )
+
+      // continue without the entity
+      actor.continue(new_state)
+    }
+    CommandLook(entity_id) -> {
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+      let assert Ok(room) = dict.get(state.rooms, controlled_entity.room_id)
+
+      process.send(
+        controlled_entity.update_subject,
+        UpdateRoomDescription(
+          name: room.template.name,
+          description: room.template.description,
+          exits: room.template.exits,
+        ),
+      )
+
+      actor.continue(state)
+    }
+    CommandSayRoom(entity_id, text) -> {
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+      let assert Ok(entity) =
+        get_entity(state, controlled_entity.room_id, entity_id)
+
+      send_update_to_room(
+        state,
+        controlled_entity.room_id,
+        UpdateSayRoom(get_entity_name(entity), text),
+      )
+
+      actor.continue(state)
+    }
+
+    AdminTeleport(entity_id, target_room_id) -> {
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+      let assert Ok(entity) =
+        get_entity(state, controlled_entity.room_id, entity_id)
+
+      case dict.get(state.rooms, target_room_id) {
+        Ok(target_room) -> {
+          send_update_to_room(
+            state,
+            target_room_id,
+            UpdateEntityTeleportedIn(get_entity_name(entity)),
+          )
+
+          let new_state =
+            state
+            |> move_entity(entity, controlled_entity.room_id, target_room_id)
+
+          process.send(
+            controlled_entity.update_subject,
+            UpdateRoomDescription(
+              name: target_room.template.name,
+              description: target_room.template.description,
+              exits: target_room.template.exits,
+            ),
+          )
+
+          send_update_to_room(
+            new_state,
+            controlled_entity.room_id,
+            UpdateEntityTeleportedOut(get_entity_name(entity)),
+          )
+
+          actor.continue(new_state)
+        }
+        Error(Nil) -> {
+          process.send(
+            controlled_entity.update_subject,
+            AdminCommandFailed("Invalid room ID"),
+          )
+          actor.continue(state)
+        }
+      }
+    }
   }
 }
 

@@ -183,9 +183,9 @@ fn handle_update(
       render.player_quit(state.conn, state.size.0, name)
     simulation.UpdateSayRoom(name, text) ->
       render.speech(state.conn, state.size.0, name, text)
-    simulation.UpdatePlayerTeleportedOut(name) ->
+    simulation.UpdateEntityTeleportedOut(name) ->
       render.entity_teleported_out(state.conn, state.size.0, name)
-    simulation.UpdatePlayerTeleportedIn(name) ->
+    simulation.UpdateEntityTeleportedIn(name) ->
       render.entity_teleported_in(state.conn, state.size.0, name)
     simulation.AdminCommandFailed(reason) ->
       render.admin_command_failed(state.conn, state.size.0, reason)
