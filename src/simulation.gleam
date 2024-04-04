@@ -90,7 +90,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
           })
           |> dict.from_list()
 
-        actor.Ready(SimState(0, sim_subject, rooms, dict.new()), selector)
+        actor.Ready(SimState(-1, sim_subject, rooms, dict.new()), selector)
       },
       init_timeout: 1000,
       loop: loop,
@@ -338,7 +338,7 @@ fn move_entity(
 }
 
 fn increment_next_entity_id(state: SimState) -> SimState {
-  SimState(..state, next_entity_id: state.next_entity_id + 1)
+  SimState(..state, next_entity_id: state.next_entity_id - 1)
 }
 
 // procedures
