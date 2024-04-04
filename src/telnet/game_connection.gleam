@@ -93,72 +93,8 @@ fn handle_dimensions(
 }
 
 fn handle_data(state: State, data: BitArray) -> actor.Next(Message, State) {
-  let new_state = handle_input(state, data)
-  actor.continue(new_state)
-}
-
-fn handle_update(
-  state: State,
-  update: simulation.Update,
-) -> actor.Next(Message, State) {
-  let assert Ok(_) = case update {
-    simulation.UpdateRoomDescription(name, desc, exits) ->
-      render.room_descripion(state.conn, name, desc, exits, state.size.0)
-    simulation.UpdatePlayerSpawned(name) ->
-      render.player_spawned(state.conn, state.size.0, name)
-    simulation.UpdatePlayerQuit(name) ->
-      render.player_quit(state.conn, state.size.0, name)
-    simulation.UpdateSayRoom(name, text) ->
-      render.speech(state.conn, state.size.0, name, text)
-    simulation.UpdatePlayerTeleportedOut(name) ->
-      render.entity_teleported_out(state.conn, state.size.0, name)
-    simulation.UpdatePlayerTeleportedIn(name) ->
-      render.entity_teleported_in(state.conn, state.size.0, name)
-    simulation.AdminCommandFailed(reason) ->
-      render.admin_command_failed(state.conn, state.size.0, reason)
-  }
-  let assert Ok(_) = case state.mode {
-    Command -> render.prompt_command(state.conn)
-    RoomSay -> render.prompt_say(state.conn)
-    _ -> Ok(Nil)
-  }
-  actor.continue(state)
-}
-
-type ParseCommandError {
-  UnknownCommand
-  InvalidCommand
-  SayWhat
-}
-
-fn parse_command(
-  entity_id: Int,
-  str: String,
-) -> Result(simulation.Command, ParseCommandError) {
-  case string.split(str, " ") {
-    ["quit", ..] -> Ok(simulation.CommandQuit(entity_id))
-    ["look", ..] -> Ok(simulation.CommandLook(entity_id))
-    ["say", ..rest] ->
-      case list.length(rest) {
-        0 -> Error(SayWhat)
-        _ ->
-          Ok(simulation.CommandSayRoom(
-            entity_id: entity_id,
-            text: string.join(rest, " "),
-          ))
-      }
-    ["@tp", room, ..] ->
-      case int.parse(room) {
-        Ok(room_num) -> Ok(simulation.AdminTeleport(entity_id, room_num))
-        Error(Nil) -> Error(InvalidCommand)
-      }
-    _ -> Error(UnknownCommand)
-  }
-}
-
-fn handle_input(state: State, data: BitArray) -> State {
   let assert Ok(string) = bit_array.to_string(data)
-  case state.mode {
+  let new_state = case state.mode {
     FirstIAC -> state
     Menu -> {
       let assert Ok(msg) = bit_array.to_string(data)
@@ -234,6 +170,66 @@ fn handle_input(state: State, data: BitArray) -> State {
         }
       }
     }
+  }
+  actor.continue(new_state)
+}
+
+fn handle_update(
+  state: State,
+  update: simulation.Update,
+) -> actor.Next(Message, State) {
+  let assert Ok(_) = case update {
+    simulation.UpdateRoomDescription(name, desc, exits) ->
+      render.room_descripion(state.conn, name, desc, exits, state.size.0)
+    simulation.UpdatePlayerSpawned(name) ->
+      render.player_spawned(state.conn, state.size.0, name)
+    simulation.UpdatePlayerQuit(name) ->
+      render.player_quit(state.conn, state.size.0, name)
+    simulation.UpdateSayRoom(name, text) ->
+      render.speech(state.conn, state.size.0, name, text)
+    simulation.UpdatePlayerTeleportedOut(name) ->
+      render.entity_teleported_out(state.conn, state.size.0, name)
+    simulation.UpdatePlayerTeleportedIn(name) ->
+      render.entity_teleported_in(state.conn, state.size.0, name)
+    simulation.AdminCommandFailed(reason) ->
+      render.admin_command_failed(state.conn, state.size.0, reason)
+  }
+  let assert Ok(_) = case state.mode {
+    Command -> render.prompt_command(state.conn)
+    RoomSay -> render.prompt_say(state.conn)
+    _ -> Ok(Nil)
+  }
+  actor.continue(state)
+}
+
+type ParseCommandError {
+  UnknownCommand
+  InvalidCommand
+  SayWhat
+}
+
+fn parse_command(
+  entity_id: Int,
+  str: String,
+) -> Result(simulation.Command, ParseCommandError) {
+  case string.split(str, " ") {
+    ["quit", ..] -> Ok(simulation.CommandQuit(entity_id))
+    ["look", ..] -> Ok(simulation.CommandLook(entity_id))
+    ["say", ..rest] ->
+      case list.length(rest) {
+        0 -> Error(SayWhat)
+        _ ->
+          Ok(simulation.CommandSayRoom(
+            entity_id: entity_id,
+            text: string.join(rest, " "),
+          ))
+      }
+    ["@tp", room, ..] ->
+      case int.parse(room) {
+        Ok(room_num) -> Ok(simulation.AdminTeleport(entity_id, room_num))
+        Error(Nil) -> Error(InvalidCommand)
+      }
+    _ -> Error(UnknownCommand)
   }
 }
 
