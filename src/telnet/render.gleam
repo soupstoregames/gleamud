@@ -192,6 +192,34 @@ pub fn player_quit(conn: Connection(_user_message), width: Int, name: String) {
   |> println(conn, _)
 }
 
+pub fn entity_arrived(
+  conn: Connection(_user_message),
+  width,
+  name: String,
+  dir: world.Direction,
+) {
+  let assert Ok(_) = erase_line(conn, width)
+  name
+  |> string.append(" arrives from " <> dir_to_natural_language(dir) <> ".")
+  |> bold
+  |> word_wrap(width)
+  |> println(conn, _)
+}
+
+pub fn entity_left(
+  conn: Connection(_user_message),
+  width,
+  name: String,
+  dir: world.Direction,
+) {
+  let assert Ok(_) = erase_line(conn, width)
+  name
+  |> string.append(" leaves to " <> dir_to_natural_language(dir) <> ".")
+  |> bold
+  |> word_wrap(width)
+  |> println(conn, _)
+}
+
 pub fn entity_teleported_out(
   conn: Connection(_user_message),
   width,
@@ -272,4 +300,19 @@ fn center(str: String, width: Int) -> String {
 // be sure to call this after wrap
 fn insert_carriage_returns(str: String) -> String {
   string.replace(str, "\n", "\n\r")
+}
+
+fn dir_to_natural_language(dir: world.Direction) -> String {
+  case dir {
+    world.North -> "the north"
+    world.East -> "the east"
+    world.South -> "the south"
+    world.West -> "the west"
+    world.NorthEast -> "the northeast"
+    world.SouthEast -> "the southeast"
+    world.SouthWest -> "the southwest"
+    world.NorthWest -> "the northwest"
+    world.Up -> "above"
+    world.Down -> "below"
+  }
 }

@@ -18,12 +18,14 @@ pub type Command {
   CommandQuit(entity_id: Int)
   CommandLook(entity_id: Int)
   CommandSayRoom(entity_id: Int, text: String)
+  CommandMove(entity_id: Int, dir: world.Direction)
 
   AdminTeleport(entity_id: Int, room_id: Int)
 }
 
 /// Updates are sent from the sim to the game mux
 pub type Update {
+  UpdateCommandFailed(reason: String)
   UpdateRoomDescription(
     name: String,
     description: String,
@@ -32,9 +34,10 @@ pub type Update {
   UpdatePlayerSpawned(name: String)
   UpdatePlayerQuit(name: String)
   UpdateSayRoom(name: String, text: String)
+  UpdateEntityLeft(name: String, dir: world.Direction)
+  UpdateEntityArrived(name: String, dir: world.Direction)
 
   // admin stuff
-  AdminCommandFailed(reason: String)
   UpdateEntityTeleportedOut(name: String)
   UpdateEntityTeleportedIn(name: String)
 }
@@ -192,6 +195,62 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
 
       actor.continue(state)
     }
+    CommandMove(entity_id, dir) -> {
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+      let assert Ok(room) = dict.get(state.rooms, controlled_entity.room_id)
+
+      case dict.get(room.template.exits, dir) {
+        Ok(target_room_id) -> {
+          // get the entity data in order to get the name
+          let assert Ok(entity) =
+            get_entity(state, controlled_entity.room_id, entity_id)
+          // get the target room for the description and arrived text
+          let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
+
+          // tell the entities in the target room that this entity arrived
+          send_update_to_room(
+            state,
+            target_room_id,
+            UpdateEntityArrived(
+              query_entity_name(entity),
+              world.dir_mirror(dir),
+            ),
+          )
+
+          // move the entity
+          let new_state =
+            state
+            |> move_entity(entity, controlled_entity.room_id, target_room_id)
+
+          // send the entity the new room description
+          process.send(
+            controlled_entity.update_subject,
+            UpdateRoomDescription(
+              name: target_room.template.name,
+              description: target_room.template.description,
+              exits: target_room.template.exits,
+            ),
+          )
+
+          // tell all the entities left behind that the player left
+          send_update_to_room(
+            new_state,
+            controlled_entity.room_id,
+            UpdateEntityLeft(query_entity_name(entity), dir),
+          )
+
+          actor.continue(new_state)
+        }
+        Error(Nil) -> {
+          process.send(
+            controlled_entity.update_subject,
+            UpdateCommandFailed(reason: "There is no exit that way."),
+          )
+          actor.continue(state)
+        }
+      }
+    }
 
     AdminTeleport(entity_id, target_room_id) -> {
       let assert Ok(controlled_entity) =
@@ -231,7 +290,7 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
         Error(Nil) -> {
           process.send(
             controlled_entity.update_subject,
-            AdminCommandFailed("Invalid room ID"),
+            UpdateCommandFailed("Invalid room ID"),
           )
           actor.continue(state)
         }

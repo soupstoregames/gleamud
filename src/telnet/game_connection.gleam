@@ -9,6 +9,7 @@ import glisten
 import glisten/transport
 import telnet/render
 import simulation
+import data/world
 
 pub type Message {
   Dimensions(Int, Int)
@@ -175,6 +176,8 @@ fn handle_update(
   update: simulation.Update,
 ) -> actor.Next(Message, State) {
   let assert Ok(_) = case update {
+    simulation.UpdateCommandFailed(reason) ->
+      render.admin_command_failed(state.conn, state.size.0, reason)
     simulation.UpdateRoomDescription(name, desc, exits) ->
       render.room_descripion(state.conn, name, desc, exits, state.size.0)
     simulation.UpdatePlayerSpawned(name) ->
@@ -187,8 +190,10 @@ fn handle_update(
       render.entity_teleported_out(state.conn, state.size.0, name)
     simulation.UpdateEntityTeleportedIn(name) ->
       render.entity_teleported_in(state.conn, state.size.0, name)
-    simulation.AdminCommandFailed(reason) ->
-      render.admin_command_failed(state.conn, state.size.0, reason)
+    simulation.UpdateEntityArrived(name, dir) ->
+      render.entity_arrived(state.conn, state.size.0, name, dir)
+    simulation.UpdateEntityLeft(name, dir) ->
+      render.entity_left(state.conn, state.size.0, name, dir)
   }
   let assert Ok(_) = case state.mode {
     FirstIAC -> Ok(Nil)
@@ -197,6 +202,26 @@ fn handle_update(
     RoomSay -> render.prompt_say(state.conn)
   }
   actor.continue(state)
+}
+
+fn on_enter(state: State) -> State {
+  case state.mode {
+    FirstIAC -> state
+    Menu -> {
+      let assert Ok(_) = render.logo(state.conn, state.size.0)
+      let assert Ok(_) = render.menu(state.conn, state.size.0)
+      let assert Ok(_) = render.prompt_command(state.conn)
+      state
+    }
+    Command -> {
+      let assert Ok(_) = render.prompt_command(state.conn)
+      state
+    }
+    RoomSay -> {
+      let assert Ok(_) = render.prompt_say(state.conn)
+      state
+    }
+  }
 }
 
 type ParseCommandError {
@@ -221,31 +246,30 @@ fn parse_command(
             text: string.join(rest, " "),
           ))
       }
+    ["west", ..] | ["w", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.West))
+    ["east", ..] | ["e", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.East))
+    ["north", ..] | ["n", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.North))
+    ["south", ..] | ["s", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.South))
+    ["northeast", ..] | ["ne", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.NorthEast))
+    ["southeast", ..] | ["se", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.SouthEast))
+    ["northwest", ..] | ["nw", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.NorthWest))
+    ["southwest", ..] | ["sw", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.SouthWest))
+    ["up", ..] | ["u", ..] -> Ok(simulation.CommandMove(entity_id, world.Up))
+    ["down", ..] | ["d", ..] ->
+      Ok(simulation.CommandMove(entity_id, world.Down))
     ["@tp", room, ..] ->
       case int.parse(room) {
         Ok(room_num) -> Ok(simulation.AdminTeleport(entity_id, room_num))
         Error(Nil) -> Error(InvalidCommand)
       }
     _ -> Error(UnknownCommand)
-  }
-}
-
-fn on_enter(state: State) -> State {
-  case state.mode {
-    FirstIAC -> state
-    Menu -> {
-      let assert Ok(_) = render.logo(state.conn, state.size.0)
-      let assert Ok(_) = render.menu(state.conn, state.size.0)
-      let assert Ok(_) = render.prompt_command(state.conn)
-      state
-    }
-    Command -> {
-      let assert Ok(_) = render.prompt_command(state.conn)
-      state
-    }
-    RoomSay -> {
-      let assert Ok(_) = render.prompt_say(state.conn)
-      state
-    }
   }
 }
