@@ -1,5 +1,6 @@
 import gleam/dict.{type Dict}
 import gleam/dynamic
+import gleam/int
 import gleam/list
 import gleam/option.{Some}
 import sqlight
@@ -17,19 +18,19 @@ pub type Direction {
   Down
 }
 
-fn str_to_dir(str: String) -> Direction {
+pub fn parse_dir(str: String) -> Result(Direction, Nil) {
   case str {
-    "north" -> North
-    "east" -> East
-    "south" -> South
-    "west" -> West
-    "northeast" -> NorthEast
-    "southeast" -> SouthEast
-    "southwest" -> SouthWest
-    "northwest" -> NorthWest
-    "up" -> Up
-    "down" -> Down
-    _ -> Up
+    "north" -> Ok(North)
+    "east" -> Ok(East)
+    "south" -> Ok(South)
+    "west" -> Ok(West)
+    "northeast" -> Ok(NorthEast)
+    "southeast" -> Ok(SouthEast)
+    "southwest" -> Ok(SouthWest)
+    "northwest" -> Ok(NorthWest)
+    "up" -> Ok(Up)
+    "down" -> Ok(Down)
+    _ -> Error(Nil)
   }
 }
 
@@ -45,6 +46,21 @@ pub fn dir_to_str(dir: Direction) -> String {
     NorthWest -> "northwest"
     Up -> "up"
     Down -> "down"
+  }
+}
+
+pub fn dir_mirror(dir: Direction) -> Direction {
+  case dir {
+    North -> South
+    East -> West
+    South -> North
+    West -> East
+    NorthEast -> SouthWest
+    SouthEast -> NorthWest
+    SouthWest -> NorthEast
+    NorthWest -> SouthEast
+    Up -> Down
+    Down -> Up
   }
 }
 
@@ -97,12 +113,13 @@ say <text>   say a message to the room
     case dict.get(world.rooms, row.0) {
       Ok(room) -> {
         case row.3, row.4 {
-          Some(dir), Some(target) -> {
+          Some(dir_str), Some(target) -> {
+            let assert Ok(dir) = parse_dir(dir_str)
             world
             |> add_room(
               row.0,
               room
-                |> add_exit(str_to_dir(dir), target),
+                |> add_exit(dir, target),
             )
           }
           _, _ -> world
@@ -110,7 +127,8 @@ say <text>   say a message to the room
       }
       Error(Nil) -> {
         case row.3, row.4 {
-          Some(dir), Some(target) ->
+          Some(dir_str), Some(target) -> {
+            let assert Ok(dir) = parse_dir(dir_str)
             world
             |> add_room(
               row.0,
@@ -120,8 +138,9 @@ say <text>   say a message to the room
                   description: row.2,
                   exits: dict.new(),
                 )
-                |> add_exit(str_to_dir(dir), target),
+                |> add_exit(dir, target),
             )
+          }
           _, _ ->
             world
             |> add_room(
@@ -139,7 +158,7 @@ say <text>   say a message to the room
   })
 }
 
-pub fn insert_room(conn_string, name: String) -> Result(RoomTemplate, Error) {
+pub fn insert_room(conn_string, name: String) -> Result(Int, Error) {
   use conn <- sqlight.with_connection(conn_string)
 
   let sql =
@@ -152,8 +171,43 @@ pub fn insert_room(conn_string, name: String) -> Result(RoomTemplate, Error) {
   {
     Ok(rows) -> {
       let assert Ok(id) = list.first(rows)
-      Ok(RoomTemplate(id: id, name: name, description: "", exits: dict.new()))
+      Ok(id)
     }
+    Error(sqlight.SqlightError(_code, message, _offset)) -> {
+      Error(SqlError(message))
+    }
+  }
+}
+
+pub fn insert_exit(
+  conn_string,
+  dir: Direction,
+  room_id: Int,
+  reverse_dir: Direction,
+  target_room_id: Int,
+) -> Result(Nil, Error) {
+  use conn <- sqlight.with_connection(conn_string)
+
+  let sql =
+    "INSERT INTO `exits` (`room_id`, `direction`, `target_id`) VALUES "
+    <> "("
+    <> int.to_string(room_id)
+    <> ", '"
+    <> dir_to_str(dir)
+    <> "',"
+    <> int.to_string(target_room_id)
+    <> "), "
+    <> "("
+    <> int.to_string(target_room_id)
+    <> ",'"
+    <> dir_to_str(reverse_dir)
+    <> "',"
+    <> int.to_string(room_id)
+    <> ")"
+    <> ";"
+
+  case sqlight.exec(sql, on: conn) {
+    Ok(Nil) -> Ok(Nil)
     Error(sqlight.SqlightError(_code, message, _offset)) -> {
       Error(SqlError(message))
     }

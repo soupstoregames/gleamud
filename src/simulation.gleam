@@ -22,6 +22,12 @@ pub type Command {
 
   AdminTeleport(entity_id: Int, room_id: Int)
   AdminDig(entity_id: Int, room_name: String)
+  AdminTunnel(
+    entity_id: Int,
+    dir: world.Direction,
+    target_room_id: Int,
+    reverse_dir: world.Direction,
+  )
 }
 
 /// Updates are sent from the sim to the game mux
@@ -42,6 +48,7 @@ pub type Update {
   UpdateEntityTeleportedOut(name: String)
   UpdateEntityTeleportedIn(name: String)
   UpdateAdminRoomCreated(room_id: Int, name: String)
+  UpdateAdminExitCreated(dir: world.Direction, target_room_id: Int)
 }
 
 type State {
@@ -310,24 +317,115 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         dict.get(state.controlled_entities, entity_id)
 
       case world.insert_room(state.conn_string, room_name) {
-        Ok(room_template) -> {
+        Ok(id) -> {
           process.send(
             controlled_entity.update_subject,
-            UpdateAdminRoomCreated(
-              room_id: room_template.id,
-              name: room_template.name,
-            ),
+            UpdateAdminRoomCreated(room_id: id, name: room_name),
           )
 
           actor.continue(
             state
-            |> build_room(room_template.id, room_template),
+            |> build_room(
+              id,
+              world.RoomTemplate(
+                id: id,
+                name: room_name,
+                description: "",
+                exits: dict.new(),
+              ),
+            ),
           )
         }
         Error(world.SqlError(message)) -> {
           process.send(
             controlled_entity.update_subject,
             UpdateCommandFailed(reason: "SQL Error: " <> message),
+          )
+          actor.continue(state)
+        }
+      }
+    }
+    AdminTunnel(entity_id, dir, target_room_id, reverse_dir) -> {
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+      let assert Ok(room) = dict.get(state.rooms, controlled_entity.room_id)
+
+      // cant tunnel to room 0
+      case controlled_entity.room_id == 0, target_room_id == 0 {
+        False, False ->
+          // check the target room exists and get it
+          case dict.get(state.rooms, target_room_id) {
+            Ok(target_room) ->
+              // check that the requested exits dont already exist
+              case
+                dict.has_key(room.template.exits, dir),
+                dict.has_key(target_room.template.exits, reverse_dir)
+              {
+                False, False -> {
+                  // create in db
+                  case
+                    world.insert_exit(
+                      state.conn_string,
+                      dir,
+                      controlled_entity.room_id,
+                      reverse_dir,
+                      target_room_id,
+                    )
+                  {
+                    Ok(_) -> {
+                      // update running state
+                      let new_state =
+                        state
+                        |> build_exit(
+                          controlled_entity.room_id,
+                          dir,
+                          target_room_id,
+                        )
+                        |> build_exit(
+                          target_room_id,
+                          reverse_dir,
+                          controlled_entity.room_id,
+                        )
+
+                      // send confirmation
+                      process.send(
+                        controlled_entity.update_subject,
+                        UpdateAdminExitCreated(dir, target_room_id),
+                      )
+
+                      actor.continue(new_state)
+                    }
+                    Error(world.SqlError(message)) -> {
+                      process.send(
+                        controlled_entity.update_subject,
+                        UpdateCommandFailed(reason: "SQL Error: " <> message),
+                      )
+                      actor.continue(state)
+                    }
+                  }
+                }
+                _, _ -> {
+                  process.send(
+                    controlled_entity.update_subject,
+                    UpdateCommandFailed(
+                      reason: "One of the directions already has an exit.",
+                    ),
+                  )
+                  actor.continue(state)
+                }
+              }
+            Error(Nil) -> {
+              process.send(
+                controlled_entity.update_subject,
+                UpdateCommandFailed(reason: "Non-existent room."),
+              )
+              actor.continue(state)
+            }
+          }
+        _, _ -> {
+          process.send(
+            controlled_entity.update_subject,
+            UpdateCommandFailed(reason: "Cannot tunnel into room #0."),
           )
           actor.continue(state)
         }
@@ -440,8 +538,35 @@ fn increment_next_temp_entity_id(state: State) -> State {
 fn build_room(state: State, room_id: Int, template: world.RoomTemplate) -> State {
   State(
     ..state,
-    rooms: state.rooms
-    |> dict.insert(room_id, Room(template: template, entities: dict.new())),
+    rooms: dict.insert(
+      state.rooms,
+      room_id,
+      Room(template: template, entities: dict.new()),
+    ),
+  )
+}
+
+fn build_exit(
+  state: State,
+  room_id: Int,
+  dir: world.Direction,
+  target_room_id: Int,
+) -> State {
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+
+  State(
+    ..state,
+    rooms: dict.insert(
+      state.rooms,
+      room_id,
+      Room(
+        ..room,
+        template: world.RoomTemplate(
+          ..room.template,
+          exits: dict.insert(room.template.exits, dir, target_room_id),
+        ),
+      ),
+    ),
   )
 }
 

@@ -197,6 +197,8 @@ fn handle_update(
 
     simulation.UpdateAdminRoomCreated(id, name) ->
       render.admin_room_created(state.conn, state.size.0, id, name)
+    simulation.UpdateAdminExitCreated(dir, name) ->
+      render.admin_exit_created(state.conn, state.size.0, dir, name)
   }
   let assert Ok(_) = case state.mode {
     FirstIAC -> Ok(Nil)
@@ -278,6 +280,60 @@ fn parse_command(
     ["@dig"] -> Error(InvalidCommand(usage: "@dig <room_name:String>"))
     ["@dig", ..name] ->
       Ok(simulation.AdminDig(entity_id, string.join(name, " ")))
+    ["@tunnel"] | ["@tunnel", _] ->
+      Error(InvalidCommand(
+        usage: "@tunnel <dir:Direction> <room_id:Int> [reverse_dir:Direction]",
+      ))
+    ["@tunnel", dir_str, room_id_str] ->
+      case world.parse_dir(dir_str) {
+        Ok(dir) ->
+          case int.parse(room_id_str) {
+            Ok(room_id) ->
+              Ok(simulation.AdminTunnel(
+                entity_id,
+                dir,
+                room_id,
+                world.dir_mirror(dir),
+              ))
+            Error(_) ->
+              Error(InvalidCommand(
+                usage: "@tunnel <dir:Direction> <room_id:Int> [reverse_dir:Direction]",
+              ))
+          }
+        Error(_) ->
+          Error(InvalidCommand(
+            usage: "@tunnel <dir:Direction> <room_id:Int> [reverse_dir:Direction]",
+          ))
+      }
+    ["@tunnel", dir_str, room_id_str, reverse_dir_str] ->
+      case world.parse_dir(dir_str) {
+        Ok(dir) ->
+          case int.parse(room_id_str) {
+            Ok(room_id) ->
+              case world.parse_dir(reverse_dir_str) {
+                Ok(reverse_dir) ->
+                  Ok(simulation.AdminTunnel(
+                    entity_id,
+                    dir,
+                    room_id,
+                    reverse_dir,
+                  ))
+                Error(_) ->
+                  Error(InvalidCommand(
+                    usage: "@tunnel <dir:Direction> <room_id:Int> [reverse_dir:Direction]",
+                  ))
+              }
+            Error(_) ->
+              Error(InvalidCommand(
+                usage: "@tunnel <dir:Direction> <room_id:Int> [reverse_dir:Direction]",
+              ))
+          }
+        Error(_) ->
+          Error(InvalidCommand(
+            usage: "@tunnel <dir:Direction> <room_id:Int> [reverse_dir:Direction]",
+          ))
+      }
+
     _ -> Error(UnknownCommand)
   }
 }

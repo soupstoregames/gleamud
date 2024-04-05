@@ -285,6 +285,25 @@ pub fn admin_room_created(
   |> println(conn, _)
 }
 
+pub fn admin_exit_created(
+  conn: Connection(_user_message),
+  width,
+  dir: world.Direction,
+  target_room_id: Int,
+) {
+  {
+    "Exit created going "
+    <> world.dir_to_str(dir)
+    <> " to #"
+    <> int.to_string(target_room_id)
+    <> "."
+  }
+  |> bold
+  |> yellow
+  |> word_wrap(width)
+  |> println(conn, _)
+}
+
 fn center(str: String, width: Int) -> String {
   let lines = string.split(str, "\n")
 
