@@ -214,14 +214,17 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
           // get the target room for the description and arrived text
           let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
 
+          // find the exit that goes the other way
+          let assert Ok(reverse_exit) =
+            target_room.template.exits
+            |> dict.to_list
+            |> list.find(fn(exit) { exit.1 == controlled_entity.room_id })
           // tell the entities in the target room that this entity arrived
+
           send_update_to_room(
             state,
             target_room_id,
-            UpdateEntityArrived(
-              query_entity_name(entity),
-              world.dir_mirror(dir),
-            ),
+            UpdateEntityArrived(query_entity_name(entity), reverse_exit.0),
           )
 
           // move the entity

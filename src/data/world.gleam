@@ -48,21 +48,6 @@ pub fn dir_to_str(dir: Direction) -> String {
   }
 }
 
-pub fn dir_mirror(dir: Direction) -> Direction {
-  case dir {
-    North -> South
-    East -> West
-    South -> North
-    West -> East
-    NorthEast -> SouthWest
-    SouthEast -> NorthWest
-    SouthWest -> NorthEast
-    NorthWest -> SouthEast
-    Up -> Down
-    Down -> Up
-  }
-}
-
 pub type Error {
   SqlError(error: String)
 }
