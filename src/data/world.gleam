@@ -63,12 +63,17 @@ pub fn dir_mirror(dir: Direction) -> Direction {
   }
 }
 
+pub type Error {
+  SqlError(error: String)
+}
+
 pub fn load_world(conn_string: String) -> WorldTemplate {
   let base_world =
     WorldTemplate(rooms: dict.new())
     |> add_room(
       0,
       RoomTemplate(
+        id: 0,
         name: "The Testing Room",
         description: "
 In the vast expanse of an empty void, there exists a swirling energy brimming with limitless possibility. Though intangible, its presence is palpable, weaving threads of potentiality that stretch into infinity. 
@@ -124,19 +129,50 @@ say <text>   say a message to the room
             world
             |> add_room(
               row.0,
-              RoomTemplate(name: row.1, description: row.2, exits: dict.new())
+              RoomTemplate(
+                  id: row.0,
+                  name: row.1,
+                  description: row.2,
+                  exits: dict.new(),
+                )
                 |> add_exit(str_to_dir(dir), target),
             )
           _, _ ->
             world
             |> add_room(
               row.0,
-              RoomTemplate(name: row.1, description: row.2, exits: dict.new()),
+              RoomTemplate(
+                id: row.0,
+                name: row.1,
+                description: row.2,
+                exits: dict.new(),
+              ),
             )
         }
       }
     }
   })
+}
+
+pub fn insert_room(conn_string, name: String) -> Result(RoomTemplate, Error) {
+  use conn <- sqlight.with_connection(conn_string)
+
+  let sql =
+    "INSERT INTO `rooms` (`name`, `description`) VALUES (?, '') RETURNING id;"
+
+  let decoder = dynamic.element(0, dynamic.int)
+
+  case
+    sqlight.query(sql, on: conn, with: [sqlight.text(name)], expecting: decoder)
+  {
+    Ok(rows) -> {
+      let assert Ok(id) = list.first(rows)
+      Ok(RoomTemplate(id: id, name: name, description: "", exits: dict.new()))
+    }
+    Error(sqlight.SqlightError(_code, message, _offset)) -> {
+      Error(SqlError(message))
+    }
+  }
 }
 
 pub type WorldTemplate {
@@ -148,7 +184,12 @@ fn add_room(world: WorldTemplate, id: Int, room: RoomTemplate) {
 }
 
 pub type RoomTemplate {
-  RoomTemplate(name: String, description: String, exits: Dict(Direction, Int))
+  RoomTemplate(
+    id: Int,
+    name: String,
+    description: String,
+    exits: Dict(Direction, Int),
+  )
 }
 
 fn add_exit(room: RoomTemplate, direction: Direction, location: Int) {

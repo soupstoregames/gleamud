@@ -1,4 +1,4 @@
-import chromatic.{bold, bright_blue, green, magenta, red}
+import chromatic.{bold, bright_blue, green, magenta, red, yellow}
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
@@ -248,11 +248,7 @@ pub fn entity_teleported_in(
   |> println(conn, _)
 }
 
-pub fn admin_command_failed(
-  conn: Connection(_user_message),
-  width,
-  reason: String,
-) {
+pub fn command_failed(conn: Connection(_user_message), width, reason: String) {
   reason
   |> bold
   |> red
@@ -272,6 +268,19 @@ pub fn speech(
   |> string.append(" says \"")
   |> string.append(text)
   |> string.append("\"")
+  |> word_wrap(width)
+  |> println(conn, _)
+}
+
+pub fn admin_room_created(
+  conn: Connection(_user_message),
+  width,
+  id: Int,
+  name: String,
+) {
+  { "Room created: #" <> int.to_string(id) <> " " <> name }
+  |> bold
+  |> yellow
   |> word_wrap(width)
   |> println(conn, _)
 }

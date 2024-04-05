@@ -9,15 +9,15 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS rooms (
   id INTEGER PRIMARY KEY, 
-  name TEXT, 
-  description TEXT
+  name TEXT NOT NULL, 
+  description TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS exits (
   id INTEGER PRIMARY KEY, 
-  room_id INTEGER, 
-  direction TEXT, 
-  target_id INTEGER,
+  room_id INTEGER NOT NULL, 
+  direction TEXT NOT NULL, 
+  target_id INTEGER NOT NULL,
   CONSTRAINT fk_room_id
     FOREIGN KEY (room_id)
     REFERENCES rooms(id)

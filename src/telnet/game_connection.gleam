@@ -135,8 +135,8 @@ fn handle_data_command(state: State, data: BitArray) -> State {
           let assert Ok(_) = render.prompt_command(state.conn)
           Nil
         }
-        Error(InvalidCommand) -> {
-          let assert Ok(_) = render.error(state.conn, "Invalid command args")
+        Error(InvalidCommand(usage)) -> {
+          let assert Ok(_) = render.error(state.conn, "Usage: " <> usage)
           let assert Ok(_) = render.prompt_command(state.conn)
           Nil
         }
@@ -177,7 +177,7 @@ fn handle_update(
 ) -> actor.Next(Message, State) {
   let assert Ok(_) = case update {
     simulation.UpdateCommandFailed(reason) ->
-      render.admin_command_failed(state.conn, state.size.0, reason)
+      render.command_failed(state.conn, state.size.0, reason)
     simulation.UpdateRoomDescription(name, desc, exits) ->
       render.room_descripion(state.conn, name, desc, exits, state.size.0)
     simulation.UpdatePlayerSpawned(name) ->
@@ -194,6 +194,9 @@ fn handle_update(
       render.entity_arrived(state.conn, state.size.0, name, dir)
     simulation.UpdateEntityLeft(name, dir) ->
       render.entity_left(state.conn, state.size.0, name, dir)
+
+    simulation.UpdateAdminRoomCreated(id, name) ->
+      render.admin_room_created(state.conn, state.size.0, id, name)
   }
   let assert Ok(_) = case state.mode {
     FirstIAC -> Ok(Nil)
@@ -226,7 +229,7 @@ fn on_enter(state: State) -> State {
 
 type ParseCommandError {
   UnknownCommand
-  InvalidCommand
+  InvalidCommand(usage: String)
   SayWhat
 }
 
@@ -265,11 +268,16 @@ fn parse_command(
     ["up", ..] | ["u", ..] -> Ok(simulation.CommandMove(entity_id, world.Up))
     ["down", ..] | ["d", ..] ->
       Ok(simulation.CommandMove(entity_id, world.Down))
+
+    ["@tp"] -> Error(InvalidCommand(usage: "@tp <room_id:Int>"))
     ["@tp", room, ..] ->
       case int.parse(room) {
         Ok(room_num) -> Ok(simulation.AdminTeleport(entity_id, room_num))
-        Error(Nil) -> Error(InvalidCommand)
+        Error(Nil) -> Error(InvalidCommand(usage: "@tp <room_id:Int>"))
       }
+    ["@dig"] -> Error(InvalidCommand(usage: "@dig <room_name:String>"))
+    ["@dig", ..name] ->
+      Ok(simulation.AdminDig(entity_id, string.join(name, " ")))
     _ -> Error(UnknownCommand)
   }
 }

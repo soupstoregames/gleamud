@@ -21,6 +21,7 @@ pub type Command {
   CommandMove(entity_id: Int, dir: world.Direction)
 
   AdminTeleport(entity_id: Int, room_id: Int)
+  AdminDig(entity_id: Int, room_name: String)
 }
 
 /// Updates are sent from the sim to the game mux
@@ -40,10 +41,12 @@ pub type Update {
   // admin stuff
   UpdateEntityTeleportedOut(name: String)
   UpdateEntityTeleportedIn(name: String)
+  UpdateAdminRoomCreated(room_id: Int, name: String)
 }
 
-type SimState {
-  SimState(
+type State {
+  State(
+    conn_string: String,
     next_temp_entity_id: Int,
     sim_subject: Subject(Command),
     rooms: Dict(Int, Room),
@@ -93,7 +96,10 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
           })
           |> dict.from_list()
 
-        actor.Ready(SimState(-1, sim_subject, rooms, dict.new()), selector)
+        actor.Ready(
+          State(conn_string, -1, sim_subject, rooms, dict.new()),
+          selector,
+        )
       },
       init_timeout: 1000,
       loop: loop,
@@ -107,7 +113,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
   }
 }
 
-fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
+fn loop(message: Command, state: State) -> actor.Next(Command, State) {
   case message {
     Tick -> actor.continue(state)
     Shutdown -> actor.continue(state)
@@ -296,6 +302,34 @@ fn loop(message: Command, state: SimState) -> actor.Next(Command, SimState) {
         }
       }
     }
+    AdminDig(entity_id, room_name) -> {
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+
+      case world.insert_room(state.conn_string, room_name) {
+        Ok(room_template) -> {
+          process.send(
+            controlled_entity.update_subject,
+            UpdateAdminRoomCreated(
+              room_id: room_template.id,
+              name: room_template.name,
+            ),
+          )
+
+          actor.continue(
+            state
+            |> build_room(room_template.id, room_template),
+          )
+        }
+        Error(world.SqlError(message)) -> {
+          process.send(
+            controlled_entity.update_subject,
+            UpdateCommandFailed(reason: "SQL Error: " <> message),
+          )
+          actor.continue(state)
+        }
+      }
+    }
   }
 }
 
@@ -304,11 +338,11 @@ pub fn stop(subject: Subject(Command)) {
 }
 
 // state functions
-fn add_entity(state: SimState, entity: Entity, room_id: Int) -> SimState {
+fn add_entity(state: State, entity: Entity, room_id: Int) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   case entity.update_subject {
     Some(subject) ->
-      SimState(
+      State(
         ..state,
         controlled_entities: dict.insert(
           state.controlled_entities,
@@ -322,7 +356,7 @@ fn add_entity(state: SimState, entity: Entity, room_id: Int) -> SimState {
         ),
       )
     None ->
-      SimState(
+      State(
         ..state,
         rooms: dict.insert(
           state.rooms,
@@ -333,9 +367,9 @@ fn add_entity(state: SimState, entity: Entity, room_id: Int) -> SimState {
   }
 }
 
-fn remove_entity(state: SimState, entity_id: Int, room_id: Int) -> SimState {
+fn remove_entity(state: State, entity_id: Int, room_id: Int) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
-  SimState(
+  State(
     ..state,
     controlled_entities: dict.delete(state.controlled_entities, entity_id),
     rooms: dict.insert(
@@ -347,17 +381,17 @@ fn remove_entity(state: SimState, entity_id: Int, room_id: Int) -> SimState {
 }
 
 fn move_entity(
-  state: SimState,
+  state: State,
   entity: Entity,
   room_id: Int,
   target_room_id: Int,
-) -> SimState {
+) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
 
   case entity.update_subject {
     Some(subject) ->
-      SimState(
+      State(
         ..state,
         controlled_entities: dict.insert(
           state.controlled_entities,
@@ -378,7 +412,7 @@ fn move_entity(
         ),
       )
     None ->
-      SimState(
+      State(
         ..state,
         rooms: state.rooms
         |> dict.insert(
@@ -396,12 +430,20 @@ fn move_entity(
   }
 }
 
-fn increment_next_temp_entity_id(state: SimState) -> SimState {
-  SimState(..state, next_temp_entity_id: state.next_temp_entity_id - 1)
+fn increment_next_temp_entity_id(state: State) -> State {
+  State(..state, next_temp_entity_id: state.next_temp_entity_id - 1)
+}
+
+fn build_room(state: State, room_id: Int, template: world.RoomTemplate) -> State {
+  State(
+    ..state,
+    rooms: state.rooms
+    |> dict.insert(room_id, Room(template: template, entities: dict.new())),
+  )
 }
 
 // procedures
-fn send_update_to_room(state: SimState, room_id: Int, update: Update) {
+fn send_update_to_room(state: State, room_id: Int, update: Update) {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   room.entities
   |> dict.to_list
@@ -415,11 +457,7 @@ fn send_update_to_room(state: SimState, room_id: Int, update: Update) {
   })
 }
 
-fn get_entity(
-  state: SimState,
-  room_id: Int,
-  entity_id: Int,
-) -> Result(Entity, Nil) {
+fn get_entity(state: State, room_id: Int, entity_id: Int) -> Result(Entity, Nil) {
   use room <- result.try(dict.get(state.rooms, room_id))
   dict.get(room.entities, entity_id)
 }
