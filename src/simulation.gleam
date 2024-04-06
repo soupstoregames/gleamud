@@ -28,6 +28,7 @@ pub type Command {
     target_room_id: Int,
     reverse_dir: world.Direction,
   )
+  AdminRoomDescription(entity_id: Int, description: String)
 }
 
 /// Updates are sent from the sim to the game mux
@@ -431,6 +432,55 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         }
       }
     }
+    AdminRoomDescription(entity_id, description) -> {
+      let assert Ok(controlled_entity) =
+        dict.get(state.controlled_entities, entity_id)
+
+      case controlled_entity.room_id == 0 {
+        False ->
+          case
+            world.update_room_description(
+              state.conn_string,
+              controlled_entity.room_id,
+              description,
+            )
+          {
+            Ok(Nil) -> {
+              let new_state =
+                state
+                |> set_room_description(controlled_entity.room_id, description)
+
+              let assert Ok(room) =
+                dict.get(new_state.rooms, controlled_entity.room_id)
+
+              process.send(
+                controlled_entity.update_subject,
+                UpdateRoomDescription(
+                  name: room.template.name,
+                  description: room.template.description,
+                  exits: room.template.exits,
+                ),
+              )
+
+              actor.continue(new_state)
+            }
+            Error(world.SqlError(message)) -> {
+              process.send(
+                controlled_entity.update_subject,
+                UpdateCommandFailed(reason: "SQL Error: " <> message),
+              )
+              actor.continue(state)
+            }
+          }
+        True -> {
+          process.send(
+            controlled_entity.update_subject,
+            UpdateCommandFailed(reason: "Cannot update room #0."),
+          )
+          actor.continue(state)
+        }
+      }
+    }
   }
 }
 
@@ -565,6 +615,26 @@ fn build_exit(
           ..room.template,
           exits: dict.insert(room.template.exits, dir, target_room_id),
         ),
+      ),
+    ),
+  )
+}
+
+fn set_room_description(
+  state: State,
+  room_id: Int,
+  description: String,
+) -> State {
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+
+  State(
+    ..state,
+    rooms: dict.insert(
+      state.rooms,
+      room_id,
+      Room(
+        ..room,
+        template: world.RoomTemplate(..room.template, description: description),
       ),
     ),
   )

@@ -1,4 +1,4 @@
-import chromatic.{bold, bright_blue, green, magenta, red, yellow}
+import chromatic.{bleed, bold, bright_blue, green, magenta, red, yellow}
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
@@ -114,8 +114,23 @@ pub fn prompt_say(conn: Connection(_user_message)) {
   print(conn, "say> ")
 }
 
+pub fn prompt_desc(conn: Connection(_user_message)) {
+  print(conn, "desc> ")
+}
+
 pub fn erase_line(conn: Connection(_user_message), length: Int) {
   print(conn, "\r" <> string.repeat(" ", length) <> "\r")
+}
+
+pub fn desc_instructions(conn: Connection(_user_message)) {
+  println(
+    conn,
+    yellow(
+      "Entering description editing mode\nSend an empty line to finish\nSend "
+      <> bold("ABORT")
+      <> yellow(" on its own line to cancel."),
+    ),
+  )
 }
 
 pub fn error(conn: Connection(_user_message), str: String) {

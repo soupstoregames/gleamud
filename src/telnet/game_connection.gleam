@@ -3,6 +3,7 @@ import gleam/otp/actor
 import gleam/int
 import gleam/list
 import gleam/string
+import gleam/string_builder
 import gleam/function
 import gleam/bit_array
 import glisten
@@ -26,6 +27,7 @@ type State {
     size: #(Int, Int),
     mode: Mode,
     entity_id: Int,
+    buffer: string_builder.StringBuilder,
   )
 }
 
@@ -34,6 +36,7 @@ type Mode {
   Menu
   Command
   RoomSay
+  RoomDescription
 }
 
 pub fn start(
@@ -62,6 +65,7 @@ pub fn start(
           #(80, 24),
           FirstIAC,
           0,
+          string_builder.new(),
         ),
         selector,
       )
@@ -99,6 +103,7 @@ fn handle_data(state: State, data: BitArray) -> actor.Next(Message, State) {
     Menu -> handle_data_menu(state, data)
     Command -> handle_data_command(state, data)
     RoomSay -> handle_data_room_say(state, data)
+    RoomDescription -> handle_data_room_description(state, data)
   })
 }
 
@@ -128,6 +133,12 @@ fn handle_data_command(state: State, data: BitArray) -> State {
   let assert Ok(msg) = bit_array.to_string(data)
   case string.trim(msg) {
     "/say" -> on_enter(State(..state, mode: RoomSay))
+    "@desc" -> {
+      let assert Ok(_) = render.desc_instructions(state.conn)
+      on_enter(
+        State(..state, mode: RoomDescription, buffer: string_builder.new()),
+      )
+    }
     _ as trimmed -> {
       case parse_command(state.entity_id, trimmed) {
         Error(UnknownCommand) -> {
@@ -171,6 +182,24 @@ fn handle_data_room_say(state: State, data: BitArray) -> State {
   }
 }
 
+fn handle_data_room_description(state: State, data: BitArray) -> State {
+  let assert Ok(msg) = bit_array.to_string(data)
+  case string.trim(msg) {
+    "" -> {
+      process.send(
+        state.sim_subject,
+        simulation.AdminRoomDescription(
+          state.entity_id,
+          string_builder.to_string(state.buffer),
+        ),
+      )
+      State(..state, mode: Command)
+    }
+    "ABORT" -> on_enter(State(..state, mode: Command))
+    _ -> State(..state, buffer: string_builder.append(state.buffer, msg))
+  }
+}
+
 fn handle_update(
   state: State,
   update: simulation.Update,
@@ -205,6 +234,7 @@ fn handle_update(
     Menu -> Ok(Nil)
     Command -> render.prompt_command(state.conn)
     RoomSay -> render.prompt_say(state.conn)
+    RoomDescription -> Ok(Nil)
   }
   actor.continue(state)
 }
@@ -224,6 +254,10 @@ fn on_enter(state: State) -> State {
     }
     RoomSay -> {
       let assert Ok(_) = render.prompt_say(state.conn)
+      state
+    }
+    RoomDescription -> {
+      let assert Ok(_) = render.prompt_desc(state.conn)
       state
     }
   }

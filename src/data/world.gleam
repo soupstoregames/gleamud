@@ -214,6 +214,28 @@ pub fn insert_exit(
   }
 }
 
+pub fn update_room_description(
+  conn_string,
+  room_id: Int,
+  description: String,
+) -> Result(Nil, Error) {
+  use conn <- sqlight.with_connection(conn_string)
+
+  let sql =
+    "UPDATE `rooms` SET `description` = '"
+    <> description
+    <> "' WHERE id = "
+    <> int.to_string(room_id)
+    <> ";"
+
+  case sqlight.exec(sql, on: conn) {
+    Ok(Nil) -> Ok(Nil)
+    Error(sqlight.SqlightError(_code, message, _offset)) -> {
+      Error(SqlError(message))
+    }
+  }
+}
+
 pub type WorldTemplate {
   WorldTemplate(rooms: Dict(Int, RoomTemplate))
 }

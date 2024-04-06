@@ -60,5 +60,6 @@ fn handle_iac(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
 
 fn handle_input(msg: BitArray, tcp_subject: Subject(game_connection.Message)) {
   // io.debug(bit_array.base16_encode(msg))
+  // io.debug(bit_array.to_string(msg))
   process.send(tcp_subject, game_connection.Data(msg))
 }
