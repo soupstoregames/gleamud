@@ -1,4 +1,4 @@
-import chromatic.{bleed, bold, bright_blue, green, magenta, red, yellow}
+import chromatic.{bold, bright_blue, green, magenta, red, yellow}
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
