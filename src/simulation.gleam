@@ -240,10 +240,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         }
         Error(Nil) -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed(reason: "There is no exit that way."),
-          )
+          |> send_failed_to_entity(entity_id, "There is no exit that way.")
           |> actor.continue
         }
       }
@@ -260,10 +257,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       case dataentity.query(entity.data, dataentity.QueryInvisible(False)) {
         dataentity.QueryInvisible(True) -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed("Already hidden"),
-          )
+          |> send_failed_to_entity(entity_id, "Already hidden")
           |> actor.continue
         }
         _ -> {
@@ -294,10 +288,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       case dataentity.query(entity.data, dataentity.QueryInvisible(False)) {
         dataentity.QueryInvisible(False) -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed("Already visible"),
-          )
+          |> send_failed_to_entity(entity_id, "Already visible")
           |> actor.continue
         }
         _ -> {
@@ -350,10 +341,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         }
         False -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed("Invalid room ID"),
-          )
+          |> send_failed_to_entity(entity_id, "Invalid room ID")
           |> actor.continue
         }
       }
@@ -371,10 +359,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         }
         Error(world.SqlError(message)) -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed(reason: "SQL Error: " <> message),
-          )
+          |> send_failed_to_entity(entity_id, "SQL Error: " <> message)
           |> actor.continue
         }
       }
@@ -419,9 +404,9 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
                     }
                     Error(world.SqlError(message)) -> {
                       state
-                      |> send_update_to_entity(
+                      |> send_failed_to_entity(
                         entity_id,
-                        UpdateCommandFailed(reason: "SQL Error: " <> message),
+                        "SQL Error: " <> message,
                       )
                       |> actor.continue
                     }
@@ -429,30 +414,22 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
                 }
                 _, _ -> {
                   state
-                  |> send_update_to_entity(
+                  |> send_failed_to_entity(
                     entity_id,
-                    UpdateCommandFailed(
-                      reason: "One of the directions already has an exit.",
-                    ),
+                    "One of the directions already has an exit.",
                   )
                   |> actor.continue
                 }
               }
             Error(Nil) -> {
               state
-              |> send_update_to_entity(
-                entity_id,
-                UpdateCommandFailed(reason: "Non-existent room."),
-              )
+              |> send_failed_to_entity(entity_id, "Non-existent room.")
               |> actor.continue
             }
           }
         _, _ -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed(reason: "Cannot tunnel into room #0."),
-          )
+          |> send_failed_to_entity(entity_id, "Cannot tunnel into room #0.")
           |> actor.continue
         }
       }
@@ -473,19 +450,13 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
             }
             Error(world.SqlError(message)) -> {
               state
-              |> send_update_to_entity(
-                entity_id,
-                UpdateCommandFailed(reason: "SQL Error: " <> message),
-              )
+              |> send_failed_to_entity(entity_id, "SQL Error: " <> message)
               |> actor.continue
             }
           }
         True -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed(reason: "Cannot update room #0."),
-          )
+          |> send_failed_to_entity(entity_id, "Cannot update room #0.")
           |> actor.continue
         }
       }
@@ -512,20 +483,14 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
             }
             Error(world.SqlError(message)) -> {
               state
-              |> send_update_to_entity(
-                entity_id,
-                UpdateCommandFailed(reason: "SQL Error: " <> message),
-              )
+              |> send_failed_to_entity(entity_id, "SQL Error: " <> message)
               |> actor.continue
             }
           }
         }
         True -> {
           state
-          |> send_update_to_entity(
-            entity_id,
-            UpdateCommandFailed(reason: "Cannot update room #0."),
-          )
+          |> send_failed_to_entity(entity_id, "Cannot update room #0.")
           |> actor.continue
         }
       }
@@ -788,6 +753,15 @@ fn send_room_description_to_entity(state: State, entity_id: Int, room_id: Int) {
     )
 
   process.send(controlled_entity.update_subject, update)
+
+  state
+}
+
+fn send_failed_to_entity(state: State, entity_id: Int, reason: String) {
+  let assert Ok(controlled_entity) =
+    dict.get(state.controlled_entities, entity_id)
+
+  process.send(controlled_entity.update_subject, UpdateCommandFailed(reason))
 
   state
 }
