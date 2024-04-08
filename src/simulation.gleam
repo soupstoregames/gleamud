@@ -140,34 +140,17 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         )
       process.send(client, Ok(entity.id))
 
-      case query_entity_name(entity) {
-        Some(name) ->
-          send_update_to_room(
-            state,
-            room_id,
-            UpdatePlayerSpawned(#(name, entity.id)),
-          )
-        _ -> Nil
-      }
+      let entity_name = query_entity_name_forced(entity)
 
-      let assert Ok(room) = dict.get(state.rooms, room_id)
-      let entities = list_entities(entity.id, room)
-      process.send(
-        update_subject,
-        UpdateRoomDescription(
-          name: #(room.template.name, room.template.id),
-          description: room.template.description,
-          exits: room.template.exits,
-          sentient_entities: entities.0,
-          static_entities: entities.1,
-        ),
+      state
+      |> send_update_to_room(
+        room_id,
+        UpdatePlayerSpawned(#(entity_name, entity.id)),
       )
-
-      actor.continue(
-        state
-        |> add_entity(entity, room_id)
-        |> increment_next_temp_entity_id,
-      )
+      |> add_entity(entity, room_id)
+      |> send_room_description_to_entity(entity.id, room_id)
+      |> increment_next_temp_entity_id
+      |> actor.continue
     }
     //MARK: Command handlers
     CommandQuit(entity_id) -> {
@@ -176,44 +159,29 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         dict.get(state.controlled_entities, entity_id)
       let assert Ok(entity) =
         get_entity(state, controlled_entity.room_id, entity_id)
-
-      // remove the entity before sending updates
-      let new_state =
-        state
-        |> remove_entity(entity_id, controlled_entity.room_id)
+      let room_id = controlled_entity.room_id
 
       // tell all other controlled entities in that room that the player quit
       case query_entity_name(entity) {
         Some(name) ->
-          send_update_to_room(
-            state,
-            controlled_entity.room_id,
-            UpdatePlayerQuit(#(name, entity.id)),
-          )
-        _ -> Nil
+          state
+          |> remove_entity(entity_id, controlled_entity.room_id)
+          |> send_update_to_room(room_id, UpdatePlayerQuit(#(name, entity.id)))
+          |> actor.continue
+        _ ->
+          state
+          |> remove_entity(entity_id, controlled_entity.room_id)
+          |> actor.continue
       }
-
-      // continue without the entity
-      actor.continue(new_state)
     }
     CommandLook(entity_id) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
-      let assert Ok(room) = dict.get(state.rooms, controlled_entity.room_id)
-      let entities = list_entities(entity_id, room)
+      let room_id = controlled_entity.room_id
 
-      process.send(
-        controlled_entity.update_subject,
-        UpdateRoomDescription(
-          name: #(room.template.name, room.template.id),
-          description: room.template.description,
-          exits: room.template.exits,
-          sentient_entities: entities.0,
-          static_entities: entities.1,
-        ),
-      )
-
-      actor.continue(state)
+      state
+      |> send_room_description_to_entity(entity_id, room_id)
+      |> actor.continue
     }
     CommandSayRoom(entity_id, text) -> {
       let assert Ok(controlled_entity) =
@@ -221,81 +189,62 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       let assert Ok(entity) =
         get_entity(state, controlled_entity.room_id, entity_id)
 
-      send_update_to_room(
-        state,
-        controlled_entity.room_id,
-        UpdateSayRoom(#(query_entity_name_forced(entity), entity.id), text),
-      )
+      let room_id = controlled_entity.room_id
+      let entity_name = query_entity_name_forced(entity)
 
-      actor.continue(state)
+      state
+      |> send_update_to_room(
+        room_id,
+        UpdateSayRoom(#(entity_name, entity.id), text),
+      )
+      |> actor.continue
     }
     CommandMove(entity_id, dir) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
-      let assert Ok(room) = dict.get(state.rooms, controlled_entity.room_id)
+      let room_id = controlled_entity.room_id
+      let assert Ok(room) = dict.get(state.rooms, room_id)
 
       case dict.get(room.template.exits, dir) {
         Ok(target_room_id) -> {
-          // get the entity data in order to get the name
-          let assert Ok(entity) =
-            get_entity(state, controlled_entity.room_id, entity_id)
-          // get the target room for the description and arrived text
+          let assert Ok(entity) = get_entity(state, room_id, entity_id)
           let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
 
           // find the exit that goes the other way
           let assert Ok(reverse_exit) =
             target_room.template.exits
             |> dict.to_list
-            |> list.find(fn(exit) { exit.1 == controlled_entity.room_id })
+            |> list.find(fn(exit) { exit.1 == room_id })
 
-          // tell the entities in the target room that this entity arrived
           case query_entity_name(entity) {
-            Some(name) ->
-              send_update_to_room(
-                state,
+            Some(name) -> {
+              state
+              |> send_update_to_room(
                 target_room_id,
                 UpdateEntityArrived(#(name, entity.id), reverse_exit.0),
               )
-            _ -> Nil
-          }
-
-          // move the entity
-          let new_state =
-            state
-            |> move_entity(entity.id, controlled_entity.room_id, target_room_id)
-
-          // send the entity the new room description
-          let entities = list_entities(entity_id, target_room)
-          process.send(
-            controlled_entity.update_subject,
-            UpdateRoomDescription(
-              name: #(target_room.template.name, target_room.template.id),
-              description: target_room.template.description,
-              exits: target_room.template.exits,
-              sentient_entities: entities.0,
-              static_entities: entities.1,
-            ),
-          )
-
-          // tell all the entities left behind that the player left
-          case query_entity_name(entity) {
-            Some(name) ->
-              send_update_to_room(
-                state,
-                controlled_entity.room_id,
+              |> move_entity(entity.id, room_id, target_room_id)
+              |> send_room_description_to_entity(entity_id, target_room_id)
+              |> send_update_to_room(
+                room_id,
                 UpdateEntityLeft(#(name, entity.id), dir),
               )
-            _ -> Nil
+              |> actor.continue
+            }
+            _ ->
+              state
+              |> move_entity(entity.id, room_id, target_room_id)
+              |> send_room_description_to_entity(entity_id, target_room_id)
+              |> actor.continue
           }
-
-          actor.continue(new_state)
         }
         Error(Nil) -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed(reason: "There is no exit that way."),
           )
-          actor.continue(state)
+          |> actor.continue
         }
       }
     }
@@ -304,167 +253,136 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
     AdminHide(entity_id) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
+      let room_id = controlled_entity.room_id
       let assert Ok(entity) =
         get_entity(state, controlled_entity.room_id, entity_id)
 
       case dataentity.query(entity.data, dataentity.QueryInvisible(False)) {
         dataentity.QueryInvisible(True) -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed("Already hidden"),
           )
-          actor.continue(state)
+          |> actor.continue
         }
         _ -> {
           case query_entity_name(entity) {
             Some(name) ->
-              send_update_to_room(
-                state,
-                controlled_entity.room_id,
+              state
+              |> send_update_to_room(
+                room_id,
                 UpdateEntityVanished(#(name, entity.id)),
               )
-            _ -> Nil
+              |> add_components(room_id, entity.id, [dataentity.Invisible])
+              |> actor.continue
+            _ ->
+              state
+              |> add_components(room_id, entity.id, [dataentity.Invisible])
+              |> actor.continue
           }
-
-          actor.continue(
-            state
-            |> add_components(controlled_entity.room_id, entity.id, [
-              dataentity.Invisible,
-            ]),
-          )
         }
       }
     }
     AdminShow(entity_id) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
+      let room_id = controlled_entity.room_id
       let assert Ok(entity) =
         get_entity(state, controlled_entity.room_id, entity_id)
 
       case dataentity.query(entity.data, dataentity.QueryInvisible(False)) {
         dataentity.QueryInvisible(False) -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed("Already visible"),
           )
-          actor.continue(state)
+          |> actor.continue
         }
         _ -> {
-          let new_state =
-            state
-            |> remove_components(
-              controlled_entity.room_id,
-              entity.id,
-              dataentity.TInvisible,
-            )
-          let assert Ok(entity) =
-            get_entity(new_state, controlled_entity.room_id, entity_id)
-
-          case query_entity_name(entity) {
-            Some(name) ->
-              send_update_to_room(
-                new_state,
-                controlled_entity.room_id,
-                UpdateEntityAppeared(#(name, entity.id)),
-              )
-            _ -> Nil
-          }
-
-          actor.continue(new_state)
+          let name = query_entity_name_forced(entity)
+          state
+          |> remove_components(room_id, entity.id, dataentity.TInvisible)
+          |> send_update_to_room(
+            room_id,
+            UpdateEntityAppeared(#(name, entity.id)),
+          )
+          |> actor.continue
         }
       }
     }
     AdminTeleport(entity_id, target_room_id) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
+      let room_id = controlled_entity.room_id
       let assert Ok(entity) =
         get_entity(state, controlled_entity.room_id, entity_id)
 
-      case dict.get(state.rooms, target_room_id) {
-        Ok(target_room) -> {
+      case dict.has_key(state.rooms, target_room_id) {
+        True -> {
           case query_entity_name(entity) {
-            Some(name) ->
-              send_update_to_room(
-                state,
+            Some(name) -> {
+              state
+              |> send_update_to_room(
                 target_room_id,
                 UpdateEntityAppeared(#(name, entity.id)),
               )
-            _ -> Nil
-          }
-
-          let new_state =
-            state
-            |> move_entity(entity.id, controlled_entity.room_id, target_room_id)
-
-          let entities = list_entities(entity_id, target_room)
-          process.send(
-            controlled_entity.update_subject,
-            UpdateRoomDescription(
-              name: #(target_room.template.name, target_room.template.id),
-              description: target_room.template.description,
-              exits: target_room.template.exits,
-              sentient_entities: entities.0,
-              static_entities: entities.1,
-            ),
-          )
-
-          case query_entity_name(entity) {
-            Some(name) ->
-              send_update_to_room(
-                new_state,
-                controlled_entity.room_id,
+              |> move_entity(entity.id, room_id, target_room_id)
+              |> send_room_description_to_entity(entity_id, target_room_id)
+              |> send_update_to_room(
+                room_id,
                 UpdateEntityVanished(#(name, entity.id)),
               )
-            _ -> Nil
+              |> actor.continue
+            }
+            _ -> {
+              state
+              |> move_entity(
+                entity.id,
+                controlled_entity.room_id,
+                target_room_id,
+              )
+              |> send_room_description_to_entity(entity_id, target_room_id)
+              |> actor.continue
+            }
           }
-
-          actor.continue(new_state)
         }
-        Error(Nil) -> {
-          process.send(
-            controlled_entity.update_subject,
+        False -> {
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed("Invalid room ID"),
           )
-          actor.continue(state)
+          |> actor.continue
         }
       }
     }
     AdminDig(entity_id, room_name) -> {
-      let assert Ok(controlled_entity) =
-        dict.get(state.controlled_entities, entity_id)
-
       case world.insert_room(state.conn_string, room_name) {
         Ok(id) -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateAdminRoomCreated(room_id: id, name: room_name),
           )
-
-          actor.continue(
-            state
-            |> build_room(
-              id,
-              world.RoomTemplate(
-                id: id,
-                name: room_name,
-                description: "",
-                exits: dict.new(),
-              ),
-            ),
-          )
+          |> build_room(id, world.RoomTemplate(id, room_name, "", dict.new()))
+          |> actor.continue
         }
         Error(world.SqlError(message)) -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed(reason: "SQL Error: " <> message),
           )
-          actor.continue(state)
+          |> actor.continue
         }
       }
     }
     AdminTunnel(entity_id, dir, target_room_id, reverse_dir) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
+      let room_id = controlled_entity.room_id
       let assert Ok(room) = dict.get(state.rooms, controlled_entity.room_id)
 
       // cant tunnel to room 0
@@ -480,175 +398,135 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               {
                 False, False -> {
                   // create in db
-                  case
+                  let insert_result =
                     world.insert_exit(
                       state.conn_string,
                       dir,
-                      controlled_entity.room_id,
+                      room_id,
                       reverse_dir,
                       target_room_id,
                     )
-                  {
+                  case insert_result {
                     Ok(_) -> {
-                      // update running state
-                      let new_state =
-                        state
-                        |> build_exit(
-                          controlled_entity.room_id,
-                          dir,
-                          target_room_id,
-                        )
-                        |> build_exit(
-                          target_room_id,
-                          reverse_dir,
-                          controlled_entity.room_id,
-                        )
-
-                      // send confirmation
-                      process.send(
-                        controlled_entity.update_subject,
+                      state
+                      |> build_exit(room_id, dir, target_room_id)
+                      |> build_exit(target_room_id, reverse_dir, room_id)
+                      |> send_update_to_entity(
+                        entity_id,
                         UpdateAdminExitCreated(dir, target_room_id),
                       )
-
-                      actor.continue(new_state)
+                      |> actor.continue
                     }
                     Error(world.SqlError(message)) -> {
-                      process.send(
-                        controlled_entity.update_subject,
+                      state
+                      |> send_update_to_entity(
+                        entity_id,
                         UpdateCommandFailed(reason: "SQL Error: " <> message),
                       )
-                      actor.continue(state)
+                      |> actor.continue
                     }
                   }
                 }
                 _, _ -> {
-                  process.send(
-                    controlled_entity.update_subject,
+                  state
+                  |> send_update_to_entity(
+                    entity_id,
                     UpdateCommandFailed(
                       reason: "One of the directions already has an exit.",
                     ),
                   )
-                  actor.continue(state)
+                  |> actor.continue
                 }
               }
             Error(Nil) -> {
-              process.send(
-                controlled_entity.update_subject,
+              state
+              |> send_update_to_entity(
+                entity_id,
                 UpdateCommandFailed(reason: "Non-existent room."),
               )
-              actor.continue(state)
+              |> actor.continue
             }
           }
         _, _ -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed(reason: "Cannot tunnel into room #0."),
           )
-          actor.continue(state)
+          |> actor.continue
         }
       }
     }
     AdminRoomName(entity_id, name) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
+      let room_id = controlled_entity.room_id
 
-      case controlled_entity.room_id == 0 {
+      case room_id == 0 {
         False ->
-          case
-            world.update_room_name(
-              state.conn_string,
-              controlled_entity.room_id,
-              name,
-            )
-          {
+          case world.update_room_name(state.conn_string, room_id, name) {
             Ok(Nil) -> {
-              let new_state =
-                state
-                |> set_room_name(controlled_entity.room_id, name)
-
-              let assert Ok(room) =
-                dict.get(new_state.rooms, controlled_entity.room_id)
-
-              let entities = list_entities(entity_id, room)
-              process.send(
-                controlled_entity.update_subject,
-                UpdateRoomDescription(
-                  name: #(room.template.name, room.template.id),
-                  description: room.template.description,
-                  exits: room.template.exits,
-                  sentient_entities: entities.0,
-                  static_entities: entities.1,
-                ),
-              )
-
-              actor.continue(new_state)
+              state
+              |> set_room_name(room_id, name)
+              |> send_room_description_to_entity(entity_id, room_id)
+              |> actor.continue
             }
             Error(world.SqlError(message)) -> {
-              process.send(
-                controlled_entity.update_subject,
+              state
+              |> send_update_to_entity(
+                entity_id,
                 UpdateCommandFailed(reason: "SQL Error: " <> message),
               )
-              actor.continue(state)
+              |> actor.continue
             }
           }
         True -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed(reason: "Cannot update room #0."),
           )
-          actor.continue(state)
+          |> actor.continue
         }
       }
     }
     AdminRoomDescription(entity_id, description) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
+      let room_id = controlled_entity.room_id
 
-      case controlled_entity.room_id == 0 {
-        False ->
-          case
+      case room_id == 0 {
+        False -> {
+          let update_result =
             world.update_room_description(
               state.conn_string,
-              controlled_entity.room_id,
+              room_id,
               description,
             )
-          {
+          case update_result {
             Ok(Nil) -> {
-              let new_state =
-                state
-                |> set_room_description(controlled_entity.room_id, description)
-
-              let assert Ok(room) =
-                dict.get(new_state.rooms, controlled_entity.room_id)
-
-              let entities = list_entities(entity_id, room)
-              process.send(
-                controlled_entity.update_subject,
-                UpdateRoomDescription(
-                  name: #(room.template.name, room.template.id),
-                  description: room.template.description,
-                  exits: room.template.exits,
-                  sentient_entities: entities.0,
-                  static_entities: entities.1,
-                ),
-              )
-
-              actor.continue(new_state)
+              state
+              |> set_room_description(controlled_entity.room_id, description)
+              |> send_room_description_to_entity(entity_id, room_id)
+              |> actor.continue
             }
             Error(world.SqlError(message)) -> {
-              process.send(
-                controlled_entity.update_subject,
+              state
+              |> send_update_to_entity(
+                entity_id,
                 UpdateCommandFailed(reason: "SQL Error: " <> message),
               )
-              actor.continue(state)
+              |> actor.continue
             }
           }
+        }
         True -> {
-          process.send(
-            controlled_entity.update_subject,
+          state
+          |> send_update_to_entity(
+            entity_id,
             UpdateCommandFailed(reason: "Cannot update room #0."),
           )
-          actor.continue(state)
+          |> actor.continue
         }
       }
     }
@@ -885,7 +763,36 @@ fn set_room_description(
 }
 
 //MARK: procedures
-fn send_update_to_room(state: State, room_id: Int, update: Update) {
+fn send_update_to_entity(state: State, entity_id: Int, update: Update) {
+  let assert Ok(controlled_entity) =
+    dict.get(state.controlled_entities, entity_id)
+
+  process.send(controlled_entity.update_subject, update)
+
+  state
+}
+
+fn send_room_description_to_entity(state: State, entity_id: Int, room_id: Int) {
+  let assert Ok(controlled_entity) =
+    dict.get(state.controlled_entities, entity_id)
+  let assert Ok(room) = dict.get(state.rooms, room_id)
+  let entities = list_entities(entity_id, room)
+
+  let update =
+    UpdateRoomDescription(
+      name: #(room.template.name, room.template.id),
+      description: room.template.description,
+      exits: room.template.exits,
+      sentient_entities: entities.0,
+      static_entities: entities.1,
+    )
+
+  process.send(controlled_entity.update_subject, update)
+
+  state
+}
+
+fn send_update_to_room(state: State, room_id: Int, update: Update) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   room.entities
   |> dict.to_list
@@ -897,6 +804,7 @@ fn send_update_to_room(state: State, room_id: Int, update: Update) {
       _ -> Nil
     }
   })
+  state
 }
 
 fn get_entity(state: State, room_id: Int, entity_id: Int) -> Result(Entity, Nil) {
