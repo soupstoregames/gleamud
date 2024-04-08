@@ -61,24 +61,24 @@ pub type Component {
 }
 
 pub type ComponentType {
-  KNamed
-  KPhysical
+  TNamed
+  TPhysical
 
-  KPaperDollHead
-  KPaperDollChest
-  KPaperDollBack
-  KPaperDollPrimaryHand
-  KPaperDollOffHand
-  KPaperDollLegs
-  KPaperDollFeet
+  TPaperDollHead
+  TPaperDollChest
+  TPaperDollBack
+  TPaperDollPrimaryHand
+  TPaperDollOffHand
+  TPaperDollLegs
+  TPaperDollFeet
 
-  KEquipable
+  TEquipable
 
-  KMeleeWeapon
+  TMeleeWeapon
 
-  KInvulnerable
-  KSentient
-  KInvisible
+  TInvulnerable
+  TSentient
+  TInvisible
 }
 
 fn is_component_type(
@@ -86,24 +86,24 @@ fn is_component_type(
   component_type: ComponentType,
 ) -> Bool {
   case component_type, component {
-    KNamed, Named(..) -> True
-    KPhysical, Physical(..) -> True
+    TNamed, Named(..) -> True
+    TPhysical, Physical(..) -> True
 
-    KPaperDollHead, PaperDollHead(..) -> True
-    KPaperDollChest, PaperDollChest(..) -> True
-    KPaperDollBack, PaperDollBack(..) -> True
-    KPaperDollPrimaryHand, PaperDollPrimaryHand(..) -> True
-    KPaperDollOffHand, PaperDollOffHand(..) -> True
-    KPaperDollLegs, PaperDollLegs(..) -> True
-    KPaperDollFeet, PaperDollFeet(..) -> True
+    TPaperDollHead, PaperDollHead(..) -> True
+    TPaperDollChest, PaperDollChest(..) -> True
+    TPaperDollBack, PaperDollBack(..) -> True
+    TPaperDollPrimaryHand, PaperDollPrimaryHand(..) -> True
+    TPaperDollOffHand, PaperDollOffHand(..) -> True
+    TPaperDollLegs, PaperDollLegs(..) -> True
+    TPaperDollFeet, PaperDollFeet(..) -> True
 
-    KEquipable, Equipable(..) -> True
+    TEquipable, Equipable(..) -> True
 
-    KMeleeWeapon, MeleeWeapon(..) -> True
+    TMeleeWeapon, MeleeWeapon(..) -> True
 
-    KInvulnerable, Invulnerable(..) -> True
-    KSentient, Sentient(..) -> True
-    KInvisible, Invisible(..) -> True
+    TInvulnerable, Invulnerable(..) -> True
+    TSentient, Sentient(..) -> True
+    TInvisible, Invisible(..) -> True
     _, _ -> False
   }
 }

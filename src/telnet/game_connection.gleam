@@ -26,6 +26,7 @@ type State {
     conn: glisten.Connection(BitArray),
     size: #(Int, Int),
     mode: Mode,
+    is_admin: Bool,
     entity_id: Int,
     buffer: string_builder.StringBuilder,
   )
@@ -64,6 +65,7 @@ pub fn start(
           conn,
           #(80, 24),
           FirstIAC,
+          True,
           0,
           string_builder.new(),
         ),
@@ -211,6 +213,7 @@ fn handle_update(
       render.room_descripion(
         state.conn,
         state.size.0,
+        state.is_admin,
         name,
         desc,
         exits,
@@ -218,19 +221,19 @@ fn handle_update(
         statics,
       )
     simulation.UpdatePlayerSpawned(name) ->
-      render.player_spawned(state.conn, state.size.0, name)
+      render.player_spawned(state.conn, state.size.0, state.is_admin, name)
     simulation.UpdatePlayerQuit(name) ->
-      render.player_quit(state.conn, state.size.0, name)
+      render.player_quit(state.conn, state.size.0, state.is_admin, name)
     simulation.UpdateSayRoom(name, text) ->
-      render.speech(state.conn, state.size.0, name, text)
+      render.speech(state.conn, state.size.0, state.is_admin, name, text)
     simulation.UpdateEntityVanished(name) ->
-      render.entity_vanished(state.conn, state.size.0, name)
+      render.entity_vanished(state.conn, state.size.0, state.is_admin, name)
     simulation.UpdateEntityAppeared(name) ->
-      render.entity_appeared(state.conn, state.size.0, name)
+      render.entity_appeared(state.conn, state.size.0, state.is_admin, name)
     simulation.UpdateEntityArrived(name, dir) ->
-      render.entity_arrived(state.conn, state.size.0, name, dir)
+      render.entity_arrived(state.conn, state.size.0, state.is_admin, name, dir)
     simulation.UpdateEntityLeft(name, dir) ->
-      render.entity_left(state.conn, state.size.0, name, dir)
+      render.entity_left(state.conn, state.size.0, state.is_admin, name, dir)
 
     simulation.UpdateAdminRoomCreated(id, name) ->
       render.admin_room_created(state.conn, state.size.0, id, name)

@@ -148,6 +148,7 @@ pub fn backspace(conn: Connection(_user_message)) {
 pub fn room_descripion(
   conn: Connection(_user_message),
   width,
+  is_admin,
   name,
   desc,
   exits,
@@ -155,30 +156,33 @@ pub fn room_descripion(
   statics,
 ) {
   name
+  |> render_name(is_admin)
   |> string.append("\n")
   |> bold
   |> green
   |> string.append(desc)
   |> string.append("\n")
-  |> string.append(render_statics(statics))
+  |> string.append(render_statics(statics, is_admin))
   |> string.append(render_exits(exits))
-  |> string.append(render_sentients(sentients))
+  |> string.append(render_sentients(sentients, is_admin))
   |> word_wrap(width)
   |> println(conn, _)
 }
 
-fn render_statics(statics: List(String)) -> String {
+fn render_statics(statics: List(#(String, Int)), is_admin: Bool) -> String {
   case list.length(statics) {
     0 -> ""
     1 ->
       "On the floor, there is "
       <> statics
+      |> list.map(render_name(_, is_admin))
       |> list.map(bold)
       |> join_and
       <> "."
     _ -> {
       "On the floor, there are "
       <> statics
+      |> list.map(render_name(_, is_admin))
       |> list.map(bold)
       |> join_and
       <> "."
@@ -186,12 +190,13 @@ fn render_statics(statics: List(String)) -> String {
   }
 }
 
-fn render_sentients(statics: List(String)) -> String {
+fn render_sentients(statics: List(#(String, Int)), is_admin: Bool) -> String {
   case list.length(statics) {
     0 -> ""
     _ ->
       "With you is "
       <> statics
+      |> list.map(render_name(_, is_admin))
       |> list.sort(string.compare)
       |> list.map(bold)
       |> join_and
@@ -223,9 +228,15 @@ fn render_exits(exits: Dict(world.Direction, Int)) -> String {
   }
 }
 
-pub fn player_spawned(conn: Connection(_user_message), width, name: String) {
+pub fn player_spawned(
+  conn: Connection(_user_message),
+  width: Int,
+  is_admin: Bool,
+  name: #(String, Int),
+) {
   let assert Ok(_) = erase_line(conn, width)
   name
+  |> render_name(is_admin)
   |> string.append(" blinks into existance.")
   |> bold
   |> bright_blue
@@ -233,9 +244,15 @@ pub fn player_spawned(conn: Connection(_user_message), width, name: String) {
   |> println(conn, _)
 }
 
-pub fn player_quit(conn: Connection(_user_message), width: Int, name: String) {
+pub fn player_quit(
+  conn: Connection(_user_message),
+  width: Int,
+  is_admin: Bool,
+  name: #(String, Int),
+) {
   let assert Ok(_) = erase_line(conn, width)
   name
+  |> render_name(is_admin)
   |> string.append(" fades into non-existence.")
   |> bold
   |> bright_blue
@@ -245,12 +262,14 @@ pub fn player_quit(conn: Connection(_user_message), width: Int, name: String) {
 
 pub fn entity_arrived(
   conn: Connection(_user_message),
-  width,
-  name: String,
+  width: Int,
+  is_admin: Bool,
+  name: #(String, Int),
   dir: world.Direction,
 ) {
   let assert Ok(_) = erase_line(conn, width)
   name
+  |> render_name(is_admin)
   |> string.append(" arrives from " <> dir_to_natural_language(dir) <> ".")
   |> bold
   |> word_wrap(width)
@@ -259,21 +278,29 @@ pub fn entity_arrived(
 
 pub fn entity_left(
   conn: Connection(_user_message),
-  width,
-  name: String,
+  width: Int,
+  is_admin: Bool,
+  name: #(String, Int),
   dir: world.Direction,
 ) {
   let assert Ok(_) = erase_line(conn, width)
   name
+  |> render_name(is_admin)
   |> string.append(" leaves to " <> dir_to_natural_language(dir) <> ".")
   |> bold
   |> word_wrap(width)
   |> println(conn, _)
 }
 
-pub fn entity_vanished(conn: Connection(_user_message), width, name: String) {
+pub fn entity_vanished(
+  conn: Connection(_user_message),
+  width: Int,
+  is_admin: Bool,
+  name: #(String, Int),
+) {
   let assert Ok(_) = erase_line(conn, width)
   name
+  |> render_name(is_admin)
   |> string.append(" disappears into thin air.")
   |> bold
   |> bright_blue
@@ -281,9 +308,15 @@ pub fn entity_vanished(conn: Connection(_user_message), width, name: String) {
   |> println(conn, _)
 }
 
-pub fn entity_appeared(conn: Connection(_user_message), width, name: String) {
+pub fn entity_appeared(
+  conn: Connection(_user_message),
+  width: Int,
+  is_admin: Bool,
+  name: #(String, Int),
+) {
   let assert Ok(_) = erase_line(conn, width)
   name
+  |> render_name(is_admin)
   |> string.append(" appears from thin air.")
   |> bold
   |> bright_blue
@@ -291,7 +324,11 @@ pub fn entity_appeared(conn: Connection(_user_message), width, name: String) {
   |> println(conn, _)
 }
 
-pub fn command_failed(conn: Connection(_user_message), width, reason: String) {
+pub fn command_failed(
+  conn: Connection(_user_message),
+  width: Int,
+  reason: String,
+) {
   reason
   |> bold
   |> red
@@ -302,11 +339,13 @@ pub fn command_failed(conn: Connection(_user_message), width, reason: String) {
 pub fn speech(
   conn: Connection(_user_message),
   width,
-  name: String,
+  is_admin: Bool,
+  name: #(String, Int),
   text: String,
 ) {
   let assert Ok(_) = erase_line(conn, width)
   name
+  |> render_name(is_admin)
   |> bold
   |> string.append(" says \"")
   |> string.append(text)
@@ -393,5 +432,12 @@ fn join_and(l: List(String)) -> String {
     [] -> ""
     [name] -> name
     [head, ..rest] -> string.join(list.reverse(rest), ", ") <> " and " <> head
+  }
+}
+
+fn render_name(name_id: #(String, Int), is_admin: Bool) -> String {
+  case is_admin {
+    False -> name_id.0
+    True -> name_id.0 <> "(#" <> int.to_string(name_id.1) <> ")"
   }
 }

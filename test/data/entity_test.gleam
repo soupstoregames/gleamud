@@ -14,7 +14,7 @@ pub fn add_components_test() {
 pub fn remove_all_components_of_type_test() {
   let ent =
     entity.new([entity.Invisible, entity.Named("named")])
-    |> entity.remove_all_components_of_type(entity.KInvisible)
+    |> entity.remove_all_components_of_type(entity.TInvisible)
 
   ent.components
   |> should.equal([entity.Named("named")])

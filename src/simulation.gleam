@@ -39,21 +39,21 @@ pub type Command {
 pub type Update {
   UpdateCommandFailed(reason: String)
   UpdateRoomDescription(
-    name: String,
+    name: #(String, Int),
     description: String,
     exits: Dict(world.Direction, Int),
-    sentient_entities: List(String),
-    static_entities: List(String),
+    sentient_entities: List(#(String, Int)),
+    static_entities: List(#(String, Int)),
   )
-  UpdatePlayerSpawned(name: String)
-  UpdatePlayerQuit(name: String)
-  UpdateSayRoom(name: String, text: String)
-  UpdateEntityLeft(name: String, dir: world.Direction)
-  UpdateEntityArrived(name: String, dir: world.Direction)
+  UpdatePlayerSpawned(name: #(String, Int))
+  UpdatePlayerQuit(name: #(String, Int))
+  UpdateSayRoom(name: #(String, Int), text: String)
+  UpdateEntityLeft(name: #(String, Int), dir: world.Direction)
+  UpdateEntityArrived(name: #(String, Int), dir: world.Direction)
 
   // admin stuff
-  UpdateEntityVanished(name: String)
-  UpdateEntityAppeared(name: String)
+  UpdateEntityVanished(name: #(String, Int))
+  UpdateEntityAppeared(name: #(String, Int))
   UpdateAdminRoomCreated(room_id: Int, name: String)
   UpdateAdminExitCreated(dir: world.Direction, target_room_id: Int)
 }
@@ -143,7 +143,11 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
 
       case query_entity_name(entity) {
         Some(name) ->
-          send_update_to_room(state, room_id, UpdatePlayerSpawned(name))
+          send_update_to_room(
+            state,
+            room_id,
+            UpdatePlayerSpawned(#(name, entity.id)),
+          )
         _ -> Nil
       }
 
@@ -152,7 +156,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       process.send(
         update_subject,
         UpdateRoomDescription(
-          name: room.template.name,
+          name: #(room.template.name, room.template.id),
           description: room.template.description,
           exits: room.template.exits,
           sentient_entities: entities.0,
@@ -184,7 +188,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
           send_update_to_room(
             state,
             controlled_entity.room_id,
-            UpdatePlayerQuit(name),
+            UpdatePlayerQuit(#(name, entity.id)),
           )
         _ -> Nil
       }
@@ -201,7 +205,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       process.send(
         controlled_entity.update_subject,
         UpdateRoomDescription(
-          name: room.template.name,
+          name: #(room.template.name, room.template.id),
           description: room.template.description,
           exits: room.template.exits,
           sentient_entities: entities.0,
@@ -220,7 +224,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       send_update_to_room(
         state,
         controlled_entity.room_id,
-        UpdateSayRoom(query_entity_name_forced(entity), text),
+        UpdateSayRoom(#(query_entity_name_forced(entity), entity.id), text),
       )
 
       actor.continue(state)
@@ -250,7 +254,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               send_update_to_room(
                 state,
                 target_room_id,
-                UpdateEntityArrived(name, reverse_exit.0),
+                UpdateEntityArrived(#(name, entity.id), reverse_exit.0),
               )
             _ -> Nil
           }
@@ -265,7 +269,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
           process.send(
             controlled_entity.update_subject,
             UpdateRoomDescription(
-              name: target_room.template.name,
+              name: #(target_room.template.name, target_room.template.id),
               description: target_room.template.description,
               exits: target_room.template.exits,
               sentient_entities: entities.0,
@@ -279,7 +283,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               send_update_to_room(
                 state,
                 controlled_entity.room_id,
-                UpdateEntityLeft(name, dir),
+                UpdateEntityLeft(#(name, entity.id), dir),
               )
             _ -> Nil
           }
@@ -316,7 +320,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               send_update_to_room(
                 state,
                 controlled_entity.room_id,
-                UpdateEntityVanished(name),
+                UpdateEntityVanished(#(name, entity.id)),
               )
             _ -> Nil
           }
@@ -350,7 +354,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
             |> remove_components(
               controlled_entity.room_id,
               entity,
-              dataentity.KInvisible,
+              dataentity.TInvisible,
             )
           let assert Ok(entity) =
             get_entity(new_state, controlled_entity.room_id, entity_id)
@@ -360,7 +364,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               send_update_to_room(
                 new_state,
                 controlled_entity.room_id,
-                UpdateEntityAppeared(name),
+                UpdateEntityAppeared(#(name, entity.id)),
               )
             _ -> Nil
           }
@@ -382,7 +386,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               send_update_to_room(
                 state,
                 target_room_id,
-                UpdateEntityAppeared(name),
+                UpdateEntityAppeared(#(name, entity.id)),
               )
             _ -> Nil
           }
@@ -395,7 +399,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
           process.send(
             controlled_entity.update_subject,
             UpdateRoomDescription(
-              name: target_room.template.name,
+              name: #(target_room.template.name, target_room.template.id),
               description: target_room.template.description,
               exits: target_room.template.exits,
               sentient_entities: entities.0,
@@ -408,7 +412,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               send_update_to_room(
                 new_state,
                 controlled_entity.room_id,
-                UpdateEntityVanished(name),
+                UpdateEntityVanished(#(name, entity.id)),
               )
             _ -> Nil
           }
@@ -568,7 +572,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               process.send(
                 controlled_entity.update_subject,
                 UpdateRoomDescription(
-                  name: room.template.name,
+                  name: #(room.template.name, room.template.id),
                   description: room.template.description,
                   exits: room.template.exits,
                   sentient_entities: entities.0,
@@ -620,7 +624,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               process.send(
                 controlled_entity.update_subject,
                 UpdateRoomDescription(
-                  name: room.template.name,
+                  name: #(room.template.name, room.template.id),
                   description: room.template.description,
                   exits: room.template.exits,
                   sentient_entities: entities.0,
@@ -916,11 +920,14 @@ fn query_entity_name_forced(entity: Entity) -> String {
   }
 }
 
-fn list_entities(viewer_id: Int, room: Room) -> #(List(String), List(String)) {
+fn list_entities(
+  viewer_id: Int,
+  room: Room,
+) -> #(List(#(String, Int)), List(#(String, Int))) {
   room.entities
   |> dict.values
   |> list.filter(fn(entity) { entity.id != viewer_id })
-  |> list.fold(#([], []), fn(initial, entity) {
+  |> list.fold(#([], []), fn(acc, entity) {
     let sentient_query =
       entity.data
       |> dataentity.query(dataentity.QuerySentient(False))
@@ -930,14 +937,14 @@ fn list_entities(viewer_id: Int, room: Room) -> #(List(String), List(String)) {
 
     case name_query, sentient_query {
       dataentity.QueryName(Some(name)), dataentity.QuerySentient(True) -> #(
-        [name, ..initial.0],
-        initial.1,
+        [#(name, entity.id), ..acc.0],
+        acc.1,
       )
       dataentity.QueryName(Some(name)), dataentity.QuerySentient(False) -> #(
-        initial.0,
-        [name, ..initial.1],
+        acc.0,
+        [#(name, entity.id), ..acc.1],
       )
-      _, _ -> initial
+      _, _ -> acc
     }
   })
 }
