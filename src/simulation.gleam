@@ -374,67 +374,77 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       let assert Ok(room) = dict.get(state.rooms, room_id)
 
       // cant tunnel to room 0
-      case room_id == 0, target_room_id == 0 {
-        False, False ->
-          // check the target room exists and get it
-          case dict.get(state.rooms, target_room_id) {
-            Ok(target_room) ->
-              // check that the requested exits dont already exist
-              case
-                dict.has_key(room.template.exits, dir),
-                dict.has_key(target_room.template.exits, reverse_dir)
-              {
-                False, False -> {
-                  // create in db
-                  let insert_result =
-                    world.insert_exit(
-                      state.conn_string,
-                      dir,
-                      room_id,
-                      reverse_dir,
-                      target_room_id,
-                    )
-                  case insert_result {
-                    Ok(_) -> {
-                      state
-                      |> build_exit(room_id, dir, target_room_id)
-                      |> build_exit(target_room_id, reverse_dir, room_id)
-                      |> send_update_to_entity(
-                        entity_id,
-                        UpdateAdminExitCreated(dir, target_room_id),
-                      )
-                      |> actor.continue
+      case room_id == target_room_id {
+        False ->
+          case room_id == 0, target_room_id == 0 {
+            False, False ->
+              // check the target room exists and get it
+              case dict.get(state.rooms, target_room_id) {
+                Ok(target_room) ->
+                  // check that the requested exits dont already exist
+                  case
+                    dict.has_key(room.template.exits, dir),
+                    dict.has_key(target_room.template.exits, reverse_dir)
+                  {
+                    False, False -> {
+                      // create in db
+                      let insert_result =
+                        world.insert_exit(
+                          state.conn_string,
+                          dir,
+                          room_id,
+                          reverse_dir,
+                          target_room_id,
+                        )
+                      case insert_result {
+                        Ok(_) -> {
+                          state
+                          |> build_exit(room_id, dir, target_room_id)
+                          |> build_exit(target_room_id, reverse_dir, room_id)
+                          |> send_update_to_entity(
+                            entity_id,
+                            UpdateAdminExitCreated(dir, target_room_id),
+                          )
+                          |> actor.continue
+                        }
+                        Error(world.SqlError(message)) -> {
+                          state
+                          |> send_failed_to_entity(
+                            entity_id,
+                            "SQL Error: " <> message,
+                          )
+                          |> actor.continue
+                        }
+                      }
                     }
-                    Error(world.SqlError(message)) -> {
+                    _, _ -> {
                       state
                       |> send_failed_to_entity(
                         entity_id,
-                        "SQL Error: " <> message,
+                        "One of the directions already has an exit.",
                       )
                       |> actor.continue
                     }
                   }
-                }
-                _, _ -> {
+                Error(Nil) -> {
                   state
-                  |> send_failed_to_entity(
-                    entity_id,
-                    "One of the directions already has an exit.",
-                  )
+                  |> send_failed_to_entity(entity_id, "Non-existent room.")
                   |> actor.continue
                 }
               }
-            Error(Nil) -> {
+            _, _ -> {
               state
-              |> send_failed_to_entity(entity_id, "Non-existent room.")
+              |> send_failed_to_entity(entity_id, "Cannot tunnel into room #0.")
               |> actor.continue
             }
           }
-        _, _ -> {
+        True ->
           state
-          |> send_failed_to_entity(entity_id, "Cannot tunnel into room #0.")
+          |> send_failed_to_entity(
+            entity_id,
+            "Cannot tunnel into the same room.",
+          )
           |> actor.continue
-        }
       }
     }
     AdminRoomName(entity_id, name) -> {

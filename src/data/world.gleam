@@ -1,6 +1,5 @@
 import gleam/dict.{type Dict}
 import gleam/dynamic
-import gleam/int
 import gleam/list
 import gleam/option.{Some}
 import sqlight
