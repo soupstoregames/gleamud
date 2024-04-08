@@ -835,11 +835,8 @@ fn list_entities(
   |> list.filter(fn(entity) { entity.id != viewer_id })
   |> list.fold(#([], []), fn(acc, entity) {
     let sentient_query =
-      entity.data
-      |> dataentity.query(dataentity.QuerySentient(False))
-    let name_query =
-      entity.data
-      |> dataentity.query(dataentity.QueryName(None))
+      dataentity.query(entity.data, dataentity.QuerySentient(False))
+    let name_query = dataentity.query(entity.data, dataentity.QueryName(None))
 
     case name_query, sentient_query {
       dataentity.QueryName(Some(name)), dataentity.QuerySentient(True) -> #(

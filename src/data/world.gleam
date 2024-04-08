@@ -188,26 +188,26 @@ pub fn insert_exit(
 ) -> Result(Nil, Error) {
   use conn <- sqlight.with_connection(conn_string)
 
+  let decoder = dynamic.element(0, dynamic.int)
   let sql =
-    "INSERT INTO `exits` (`room_id`, `direction`, `target_id`) VALUES "
-    <> "("
-    <> int.to_string(room_id)
-    <> ", '"
-    <> dir_to_str(dir)
-    <> "',"
-    <> int.to_string(target_room_id)
-    <> "), "
-    <> "("
-    <> int.to_string(target_room_id)
-    <> ",'"
-    <> dir_to_str(reverse_dir)
-    <> "',"
-    <> int.to_string(room_id)
-    <> ")"
-    <> ";"
+    "INSERT INTO `exits` (`room_id`, `direction`, `target_id`) VALUES (?, ?, ?), (?, ?, ?) RETURNING id;"
 
-  case sqlight.exec(sql, on: conn) {
-    Ok(Nil) -> Ok(Nil)
+  case
+    sqlight.query(
+      sql,
+      on: conn,
+      with: [
+        sqlight.int(room_id),
+        sqlight.text(dir_to_str(dir)),
+        sqlight.int(target_room_id),
+        sqlight.int(target_room_id),
+        sqlight.text(dir_to_str(reverse_dir)),
+        sqlight.int(room_id),
+      ],
+      expecting: decoder,
+    )
+  {
+    Ok(_) -> Ok(Nil)
     Error(sqlight.SqlightError(_code, message, _offset)) -> {
       Error(SqlError(message))
     }
@@ -221,15 +221,18 @@ pub fn update_room_name(
 ) -> Result(Nil, Error) {
   use conn <- sqlight.with_connection(conn_string)
 
-  let sql =
-    "UPDATE `rooms` SET `name` = '"
-    <> name
-    <> "' WHERE id = "
-    <> int.to_string(room_id)
-    <> ";"
+  let decoder = dynamic.element(0, dynamic.int)
+  let sql = "UPDATE `rooms` SET `name` = ? WHERE `id` = ? RETURNING id;"
 
-  case sqlight.exec(sql, on: conn) {
-    Ok(Nil) -> Ok(Nil)
+  case
+    sqlight.query(
+      sql,
+      on: conn,
+      with: [sqlight.text(name), sqlight.int(room_id)],
+      expecting: decoder,
+    )
+  {
+    Ok(_) -> Ok(Nil)
     Error(sqlight.SqlightError(_code, message, _offset)) -> {
       Error(SqlError(message))
     }
@@ -243,15 +246,18 @@ pub fn update_room_description(
 ) -> Result(Nil, Error) {
   use conn <- sqlight.with_connection(conn_string)
 
-  let sql =
-    "UPDATE `rooms` SET `description` = '"
-    <> description
-    <> "' WHERE id = "
-    <> int.to_string(room_id)
-    <> ";"
+  let decoder = dynamic.element(0, dynamic.int)
+  let sql = "UPDATE `rooms` SET `description` = ? WHERE `id` = ? RETURNING id;"
 
-  case sqlight.exec(sql, on: conn) {
-    Ok(Nil) -> Ok(Nil)
+  case
+    sqlight.query(
+      sql,
+      on: conn,
+      with: [sqlight.text(description), sqlight.int(room_id)],
+      expecting: decoder,
+    )
+  {
+    Ok(_) -> Ok(Nil)
     Error(sqlight.SqlightError(_code, message, _offset)) -> {
       Error(SqlError(message))
     }
