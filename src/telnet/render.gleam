@@ -163,7 +163,7 @@ pub fn room_descripion(
   |> string.append(desc)
   |> string.append("\n")
   |> string.append(render_statics(statics, is_admin))
-  |> string.append(render_exits(exits))
+  |> string.append(render_exits(exits, is_admin))
   |> string.append(render_sentients(sentients, is_admin))
   |> word_wrap(width)
   |> println(conn, _)
@@ -204,28 +204,50 @@ fn render_sentients(statics: List(#(String, Int)), is_admin: Bool) -> String {
   }
 }
 
-fn render_exits(exits: Dict(world.Direction, Int)) -> String {
+fn render_exits(
+  exits: Dict(world.Direction, world.Exit),
+  is_admin: Bool,
+) -> String {
   case dict.size(exits) {
     0 -> "There doesn't seem to be a way out.\n"
     1 ->
       "There is an exit going "
       <> exits
-      |> dict.keys
+      |> dict.to_list
       |> list.first
-      |> result.unwrap(world.Up)
-      |> world.dir_to_str
+      |> result_assert
+      |> fn(tuple: #(world.Direction, world.Exit)) {
+        let name =
+          render_name(#(world.dir_to_str(tuple.0), { tuple.1 }.id), is_admin)
+        case is_admin {
+          True -> name <> "->#" <> int.to_string({ tuple.1 }.target_room_id)
+          False -> name
+        }
+      }
       |> bold
       <> ".\n"
     _ -> {
       "There are exits going "
       <> exits
-      |> dict.keys
-      |> list.map(world.dir_to_str)
+      |> dict.to_list
+      |> list.map(fn(tuple: #(world.Direction, world.Exit)) {
+        let name =
+          render_name(#(world.dir_to_str(tuple.0), { tuple.1 }.id), is_admin)
+        case is_admin {
+          True -> name <> "->#" <> int.to_string({ tuple.1 }.target_room_id)
+          False -> name
+        }
+      })
       |> list.map(bold)
       |> join_and
       <> ".\n"
     }
   }
+}
+
+fn result_assert(result: Result(a, b)) -> a {
+  let assert Ok(a) = result
+  a
 }
 
 pub fn player_spawned(

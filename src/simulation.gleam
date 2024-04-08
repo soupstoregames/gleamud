@@ -10,6 +10,7 @@ import data/entity as dataentity
 import data/prefabs
 import data/world
 
+//MARK: Commands
 /// Commands are sent from game connections to entities
 pub type Command {
   Tick
@@ -49,13 +50,12 @@ pub fn command_requires_admin(command: Command) -> Bool {
   }
 }
 
+//MARK: Updates
 /// Updates are sent from the sim to the game mux
 pub type Update {
   UpdateCommandFailed(reason: String)
   UpdateRoomDescription(
-    name: #(String, Int),
-    description: String,
-    exits: Dict(world.Direction, Int),
+    template: world.RoomTemplate,
     sentient_entities: List(#(String, Int)),
     static_entities: List(#(String, Int)),
   )
@@ -223,25 +223,26 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
 
       let assert Ok(room) = dict.get(state.rooms, room_id)
       case dict.get(room.template.exits, dir) {
-        Ok(target_room_id) -> {
+        Ok(exit) -> {
           let assert Ok(entity) = get_entity(state, room_id, entity_id)
-          let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
+          let assert Ok(target_room) =
+            dict.get(state.rooms, exit.target_room_id)
 
           // find the exit that goes the other way
           let assert Ok(reverse_exit) =
             target_room.template.exits
             |> dict.to_list
-            |> list.find(fn(exit) { exit.1 == room_id })
+            |> list.find(fn(exit) { { exit.1 }.target_room_id == room_id })
 
           case query_entity_name(state, room_id, entity_id) {
             Some(name) -> {
               state
               |> send_update_to_room(
-                target_room_id,
+                exit.target_room_id,
                 UpdateEntityArrived(#(name, entity.id), reverse_exit.0),
               )
-              |> move_entity(room_id, entity.id, target_room_id)
-              |> send_room_description_to_entity(entity_id, target_room_id)
+              |> move_entity(room_id, entity.id, exit.target_room_id)
+              |> send_room_description_to_entity(entity_id, exit.target_room_id)
               |> send_update_to_room(
                 room_id,
                 UpdateEntityLeft(#(name, entity.id), dir),
@@ -250,8 +251,8 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
             }
             _ ->
               state
-              |> move_entity(room_id, entity.id, target_room_id)
-              |> send_room_description_to_entity(entity_id, target_room_id)
+              |> move_entity(room_id, entity.id, exit.target_room_id)
+              |> send_room_description_to_entity(entity_id, exit.target_room_id)
               |> actor.continue
           }
         }
@@ -397,10 +398,11 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
                           target_room_id,
                         )
                       case insert_result {
-                        Ok(_) -> {
-                          state
-                          |> build_exit(room_id, dir, target_room_id)
-                          |> build_exit(target_room_id, reverse_dir, room_id)
+                        Ok(exits) -> {
+                          exits
+                          |> list.fold(state, fn(acc, tuple) {
+                            build_exit(acc, tuple.0, tuple.1)
+                          })
                           |> send_update_to_entity(
                             entity_id,
                             UpdateAdminExitCreated(dir, target_room_id),
@@ -681,12 +683,7 @@ fn build_room(state: State, room_id: Int, template: world.RoomTemplate) -> State
   )
 }
 
-fn build_exit(
-  state: State,
-  room_id: Int,
-  dir: world.Direction,
-  target_room_id: Int,
-) -> State {
+fn build_exit(state: State, room_id: Int, exit: world.Exit) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
 
   State(
@@ -698,7 +695,7 @@ fn build_exit(
         ..room,
         template: world.RoomTemplate(
           ..room.template,
-          exits: dict.insert(room.template.exits, dir, target_room_id),
+          exits: dict.insert(room.template.exits, exit.direction, exit),
         ),
       ),
     ),
@@ -756,9 +753,7 @@ fn send_room_description_to_entity(state: State, entity_id: Int, room_id: Int) {
 
   let update =
     UpdateRoomDescription(
-      name: #(room.template.name, room.template.id),
-      description: room.template.description,
-      exits: room.template.exits,
+      template: room.template,
       sentient_entities: entities.0,
       static_entities: entities.1,
     )
