@@ -171,16 +171,16 @@ fn render_statics(statics: List(String)) -> String {
   case list.length(statics) {
     0 -> ""
     1 ->
-      "On the floor, there is a "
+      "On the floor, there is "
       <> statics
       |> list.map(bold)
-      |> string.join(", ")
+      |> join_and
       <> "."
     _ -> {
-      "On the floor, there is are "
+      "On the floor, there are "
       <> statics
       |> list.map(bold)
-      |> string.join(", ")
+      |> join_and
       <> "."
     }
   }
@@ -192,8 +192,9 @@ fn render_sentients(statics: List(String)) -> String {
     _ ->
       "With you is "
       <> statics
+      |> list.sort(string.compare)
       |> list.map(bold)
-      |> string.join(", ")
+      |> join_and
       <> "."
   }
 }
@@ -216,7 +217,7 @@ fn render_exits(exits: Dict(world.Direction, Int)) -> String {
       |> dict.keys
       |> list.map(world.dir_to_str)
       |> list.map(bold)
-      |> string.join(", ")
+      |> join_and
       <> ".\n"
     }
   }
@@ -392,5 +393,13 @@ fn dir_to_natural_language(dir: world.Direction) -> String {
     world.NorthWest -> "the northwest"
     world.Up -> "above"
     world.Down -> "below"
+  }
+}
+
+fn join_and(l: List(String)) -> String {
+  case list.reverse(l) {
+    [] -> ""
+    [name] -> name
+    [head, ..rest] -> string.join(list.reverse(rest), ", ") <> " and " <> head
   }
 }
