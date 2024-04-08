@@ -8,7 +8,6 @@ import gleam/result
 import data/entity as dataentity
 import data/prefabs
 import data/world
-import gleam/io
 
 /// Commands are sent from game connections to entities
 pub type Command {
@@ -170,6 +169,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         |> increment_next_temp_entity_id,
       )
     }
+    //MARK: Command handlers
     CommandQuit(entity_id) -> {
       // get all the stuff
       let assert Ok(controlled_entity) =
@@ -262,7 +262,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
           // move the entity
           let new_state =
             state
-            |> move_entity(entity, controlled_entity.room_id, target_room_id)
+            |> move_entity(entity.id, controlled_entity.room_id, target_room_id)
 
           // send the entity the new room description
           let entities = list_entities(entity_id, target_room)
@@ -300,6 +300,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       }
     }
 
+    //MARK: Admin command handling
     AdminHide(entity_id) -> {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
@@ -327,7 +328,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
 
           actor.continue(
             state
-            |> add_components(controlled_entity.room_id, entity, [
+            |> add_components(controlled_entity.room_id, entity.id, [
               dataentity.Invisible,
             ]),
           )
@@ -353,7 +354,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
             state
             |> remove_components(
               controlled_entity.room_id,
-              entity,
+              entity.id,
               dataentity.TInvisible,
             )
           let assert Ok(entity) =
@@ -393,7 +394,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
 
           let new_state =
             state
-            |> move_entity(entity, controlled_entity.room_id, target_room_id)
+            |> move_entity(entity.id, controlled_entity.room_id, target_room_id)
 
           let entities = list_entities(entity_id, target_room)
           process.send(
@@ -658,7 +659,7 @@ pub fn stop(subject: Subject(Command)) {
   process.send(subject, Shutdown)
 }
 
-// state functions
+//MARK: state functions
 fn add_entity(state: State, entity: Entity, room_id: Int) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   case entity.update_subject {
@@ -704,10 +705,11 @@ fn remove_entity(state: State, entity_id: Int, room_id: Int) -> State {
 fn add_components(
   state: State,
   room_id: Int,
-  entity: Entity,
+  entity_id: Int,
   components: List(dataentity.Component),
 ) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
+  let assert Ok(entity) = dict.get(room.entities, entity_id)
   State(
     ..state,
     rooms: dict.insert(
@@ -731,10 +733,11 @@ fn add_components(
 fn remove_components(
   state: State,
   room_id: Int,
-  entity: Entity,
+  entity_id: Int,
   component_type: dataentity.ComponentType,
 ) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
+  let assert Ok(entity) = dict.get(room.entities, entity_id)
   State(
     ..state,
     rooms: dict.insert(
@@ -760,11 +763,12 @@ fn remove_components(
 
 fn move_entity(
   state: State,
-  entity: Entity,
+  entity_id: Int,
   room_id: Int,
   target_room_id: Int,
 ) -> State {
   let assert Ok(room) = dict.get(state.rooms, room_id)
+  let assert Ok(entity) = dict.get(room.entities, entity_id)
   let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
 
   case entity.update_subject {
@@ -880,7 +884,7 @@ fn set_room_description(
   )
 }
 
-// procedures
+//MARK: procedures
 fn send_update_to_room(state: State, room_id: Int, update: Update) {
   let assert Ok(room) = dict.get(state.rooms, room_id)
   room.entities
