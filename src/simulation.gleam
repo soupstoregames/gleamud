@@ -35,6 +35,19 @@ pub type Command {
   AdminRoomDescription(entity_id: Int, description: String)
 }
 
+pub fn command_requires_admin(command: Command) -> Bool {
+  case command {
+    AdminHide(_) -> True
+    AdminShow(_) -> True
+    AdminTeleport(_, _) -> True
+    AdminDig(_, _) -> True
+    AdminTunnel(_, _, _, _) -> True
+    AdminRoomName(_, _) -> True
+    AdminRoomDescription(_, _) -> True
+    _ -> False
+  }
+}
+
 /// Updates are sent from the sim to the game mux
 pub type Update {
   UpdateCommandFailed(reason: String)

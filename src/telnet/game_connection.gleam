@@ -163,7 +163,17 @@ fn handle_data_command(state: State, data: BitArray) -> State {
             transport.close(state.conn.transport, state.conn.socket)
           process.send(state.sim_subject, com)
         }
-        Ok(com) -> process.send(state.sim_subject, com)
+        Ok(com) -> {
+          case simulation.command_requires_admin(com), state.is_admin {
+            True, True -> process.send(state.sim_subject, com)
+            True, False -> {
+              let assert Ok(_) = render.error(state.conn, "Huh?")
+              let assert Ok(_) = render.prompt_command(state.conn)
+              Nil
+            }
+            _, _ -> process.send(state.sim_subject, com)
+          }
+        }
       }
       state
     }
