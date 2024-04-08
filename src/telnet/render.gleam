@@ -271,28 +271,20 @@ pub fn entity_left(
   |> println(conn, _)
 }
 
-pub fn entity_teleported_out(
-  conn: Connection(_user_message),
-  width,
-  name: String,
-) {
+pub fn entity_vanished(conn: Connection(_user_message), width, name: String) {
   let assert Ok(_) = erase_line(conn, width)
   name
-  |> string.append(" apparates into thin air.")
+  |> string.append(" disappears into thin air.")
   |> bold
   |> bright_blue
   |> word_wrap(width)
   |> println(conn, _)
 }
 
-pub fn entity_teleported_in(
-  conn: Connection(_user_message),
-  width,
-  name: String,
-) {
+pub fn entity_appeared(conn: Connection(_user_message), width, name: String) {
   let assert Ok(_) = erase_line(conn, width)
   name
-  |> string.append(" apparates from thin air.")
+  |> string.append(" appears from thin air.")
   |> bold
   |> bright_blue
   |> word_wrap(width)

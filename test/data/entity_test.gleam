@@ -2,21 +2,22 @@ import gleam/option.{None, Some}
 import gleeunit/should
 import data/entity.{handle_event, query}
 
-pub fn query_sentient_test() {
-  let sentient_entity = entity.new([entity.Sentient])
+pub fn add_components_test() {
+  let ent =
+    entity.new([])
+    |> entity.add_components([entity.Invisible, entity.Named("named")])
 
-  let assert entity.QuerySentient(sentient) =
-    sentient_entity
-    |> query(entity.QuerySentient(False))
+  ent.components
+  |> should.equal([entity.Named("named"), entity.Invisible])
+}
 
-  sentient
-  |> should.equal(True)
+pub fn remove_all_components_of_type_test() {
+  let ent =
+    entity.new([entity.Invisible, entity.Named("named")])
+    |> entity.remove_all_components_of_type(entity.KInvisible)
 
-  let not_sentient = entity.new([])
-
-  let assert entity.QuerySentient(False) =
-    not_sentient
-    |> query(entity.QuerySentient(False))
+  ent.components
+  |> should.equal([entity.Named("named")])
 }
 
 pub fn query_name_test() {
@@ -135,4 +136,39 @@ pub fn invulnerable_test() {
 
   hp
   |> should.equal(10)
+}
+
+pub fn query_sentient_test() {
+  let sentient_entity = entity.new([entity.Sentient])
+
+  let assert entity.QuerySentient(sentient) =
+    sentient_entity
+    |> query(entity.QuerySentient(False))
+
+  sentient
+  |> should.equal(True)
+
+  let not_sentient = entity.new([])
+
+  let assert entity.QuerySentient(False) =
+    not_sentient
+    |> query(entity.QuerySentient(False))
+}
+
+pub fn query_invisible_test() {
+  let invisible_entity = entity.new([entity.Named("named"), entity.Invisible])
+
+  let assert entity.QueryName(named) =
+    invisible_entity
+    |> query(entity.QueryName(None))
+
+  named
+  |> should.equal(None)
+
+  let assert entity.QueryInvisible(invisible) =
+    invisible_entity
+    |> query(entity.QueryInvisible(False))
+
+  invisible
+  |> should.equal(True)
 }

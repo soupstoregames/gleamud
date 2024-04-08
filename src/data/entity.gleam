@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -39,9 +40,6 @@ pub fn new(components: List(Component)) -> Entity {
 }
 
 pub type Component {
-  Invulnerable
-  Sentient
-
   Named(name: String)
   Physical(hp: Int, size: Int)
 
@@ -56,13 +54,62 @@ pub type Component {
   Equipable(slot_types: List(PaperDollSlotType))
 
   MeleeWeapon(damage: DiceRoll, damage_type: DamageType)
+
+  Invulnerable
+  Sentient
+  Invisible
+}
+
+pub type ComponentType {
+  KNamed
+  KPhysical
+
+  KPaperDollHead
+  KPaperDollChest
+  KPaperDollBack
+  KPaperDollPrimaryHand
+  KPaperDollOffHand
+  KPaperDollLegs
+  KPaperDollFeet
+
+  KEquipable
+
+  KMeleeWeapon
+
+  KInvulnerable
+  KSentient
+  KInvisible
+}
+
+fn is_component_type(
+  component: Component,
+  component_type: ComponentType,
+) -> Bool {
+  case component_type, component {
+    KNamed, Named(..) -> True
+    KPhysical, Physical(..) -> True
+
+    KPaperDollHead, PaperDollHead(..) -> True
+    KPaperDollChest, PaperDollChest(..) -> True
+    KPaperDollBack, PaperDollBack(..) -> True
+    KPaperDollPrimaryHand, PaperDollPrimaryHand(..) -> True
+    KPaperDollOffHand, PaperDollOffHand(..) -> True
+    KPaperDollLegs, PaperDollLegs(..) -> True
+    KPaperDollFeet, PaperDollFeet(..) -> True
+
+    KEquipable, Equipable(..) -> True
+
+    KMeleeWeapon, MeleeWeapon(..) -> True
+
+    KInvulnerable, Invulnerable(..) -> True
+    KSentient, Sentient(..) -> True
+    KInvisible, Invisible(..) -> True
+    _, _ -> False
+  }
 }
 
 fn component_priority(component: Component) -> Int {
   case component {
-    Invulnerable -> 1
-    Sentient -> 2
-
     Named(_) -> 100
     Physical(_, _) -> 110
 
@@ -77,20 +124,24 @@ fn component_priority(component: Component) -> Int {
     Equipable(_) -> 1100
 
     MeleeWeapon(_, _) -> 10_000
+
+    Invulnerable -> 10_000_000
+    Sentient -> 10_000_001
+    Invisible -> 10_000_002
   }
 }
 
 pub type Query {
   QuerySentient(bool: Bool)
+  QueryInvisible(bool: Bool)
   QueryName(name: Option(String))
+  QueryNameForced(name: Option(String))
   QueryStatus(hp: Option(Int))
   QueryEquipable(slots: List(PaperDollSlotType))
   QueryPaperDoll(slots: List(#(PaperDollSlotType, Option(String))))
 }
 
 pub type Event {
-  AddComponents(components: List(Component))
-
   TakeDamage(amount: Int)
 }
 
@@ -100,8 +151,8 @@ pub fn query(entity: Entity, query: Query) -> Query {
 
 fn query_loop(q: Query, c: Component) -> Query {
   case c, q {
-    Sentient, QuerySentient(_) -> QuerySentient(bool: True)
     Named(name), QueryName(_) -> QueryName(name: Some(name))
+    Named(name), QueryNameForced(_) -> QueryNameForced(name: Some(name))
     Physical(hp, _size), QueryStatus(_) -> QueryStatus(hp: Some(hp))
     Equipable(slots), QueryEquipable(_) -> QueryEquipable(slots: slots)
 
@@ -133,29 +184,18 @@ fn query_loop(q: Query, c: Component) -> Query {
       QueryPaperDoll(
         list.append(query_slots, [#(Feet, name_optional_entity(entity))]),
       )
+
+    Invisible, QueryName(_) -> QueryName(name: None)
+    Invisible, QueryInvisible(_) -> QueryInvisible(bool: True)
+    Sentient, QuerySentient(_) -> QuerySentient(bool: True)
     _, _ -> q
   }
 }
 
 pub fn handle_event(entity: Entity, event: Event) -> #(Entity, Event) {
-  case event {
-    AddComponents(components) -> {
-      let new_components =
-        components
-        |> list.fold(entity.components, fn(components, component) {
-          [component, ..components]
-        })
-        |> list.sort(fn(a, b) {
-          int.compare(component_priority(a), component_priority(b))
-        })
-      #(Entity(components: new_components), event)
-    }
-    _ -> {
-      let event = list.fold(entity.components, event, transform_event)
-      let new_components = list.map(entity.components, apply_event(_, event))
-      #(Entity(components: new_components), event)
-    }
-  }
+  let event = list.fold(entity.components, event, transform_event)
+  let new_components = list.map(entity.components, apply_event(_, event))
+  #(Entity(components: new_components), event)
 }
 
 fn transform_event(event: Event, component: Component) -> Event {
@@ -171,6 +211,30 @@ fn apply_event(component: Component, event: Event) -> Component {
       Physical(hp: hp - amount, size: size)
     _, _ -> component
   }
+}
+
+pub fn add_components(entity: Entity, components: List(Component)) -> Entity {
+  Entity(
+    components: components
+    |> list.fold(entity.components, fn(components, component) {
+      [component, ..components]
+    })
+    |> list.sort(fn(a, b) {
+      int.compare(component_priority(a), component_priority(b))
+    }),
+  )
+}
+
+pub fn remove_all_components_of_type(
+  entity: Entity,
+  component_type: ComponentType,
+) {
+  Entity(
+    components: entity.components
+    |> list.filter(fn(component) {
+      bool.negate(is_component_type(component, component_type))
+    }),
+  )
 }
 
 fn name_optional_entity(entity: Option(Entity)) -> Option(String) {

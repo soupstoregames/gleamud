@@ -223,10 +223,10 @@ fn handle_update(
       render.player_quit(state.conn, state.size.0, name)
     simulation.UpdateSayRoom(name, text) ->
       render.speech(state.conn, state.size.0, name, text)
-    simulation.UpdateEntityTeleportedOut(name) ->
-      render.entity_teleported_out(state.conn, state.size.0, name)
-    simulation.UpdateEntityTeleportedIn(name) ->
-      render.entity_teleported_in(state.conn, state.size.0, name)
+    simulation.UpdateEntityVanished(name) ->
+      render.entity_vanished(state.conn, state.size.0, name)
+    simulation.UpdateEntityAppeared(name) ->
+      render.entity_appeared(state.conn, state.size.0, name)
     simulation.UpdateEntityArrived(name, dir) ->
       render.entity_arrived(state.conn, state.size.0, name, dir)
     simulation.UpdateEntityLeft(name, dir) ->
@@ -313,6 +313,8 @@ fn parse_command(
     ["down", ..] | ["d", ..] ->
       Ok(simulation.CommandMove(entity_id, world.Down))
 
+    ["@hide", ..] -> Ok(simulation.AdminHide(entity_id))
+    ["@show", ..] -> Ok(simulation.AdminShow(entity_id))
     ["@tp"] -> Error(InvalidCommand(usage: "@tp <room_id:Int>"))
     ["@tp", room, ..] ->
       case int.parse(room) {
