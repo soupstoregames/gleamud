@@ -283,7 +283,7 @@ fn parse_command(
 ) -> Result(simulation.Command, ParseCommandError) {
   case string.split(str, " ") {
     ["quit", ..] -> Ok(simulation.CommandQuit(entity_id))
-    ["look", ..] -> Ok(simulation.CommandLook(entity_id))
+    ["look", ..] | ["l", ..] -> Ok(simulation.CommandLook(entity_id))
     ["say", ..rest] ->
       case list.length(rest) {
         0 -> Error(SayWhat)
@@ -375,6 +375,9 @@ fn parse_command(
             usage: "@tunnel <dir:Direction> <room_id:Int> [reverse_dir:Direction]",
           ))
       }
+    ["@name"] -> Error(InvalidCommand(usage: "@name <room_name:String>"))
+    ["@name", ..name] ->
+      Ok(simulation.AdminRoomName(entity_id, string.join(name, " ")))
 
     _ -> Error(UnknownCommand)
   }
