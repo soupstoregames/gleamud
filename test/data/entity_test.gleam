@@ -2,6 +2,23 @@ import gleam/option.{None, Some}
 import gleeunit/should
 import data/entity.{handle_event, query}
 
+pub fn query_sentient_test() {
+  let sentient_entity = entity.new([entity.Sentient])
+
+  let assert entity.QuerySentient(sentient) =
+    sentient_entity
+    |> query(entity.QuerySentient(False))
+
+  sentient
+  |> should.equal(True)
+
+  let not_sentient = entity.new([])
+
+  let assert entity.QuerySentient(False) =
+    not_sentient
+    |> query(entity.QuerySentient(False))
+}
+
 pub fn query_name_test() {
   let named = entity.new([entity.Named("named")])
 
