@@ -40,6 +40,7 @@ pub fn new(components: List(Component)) -> Entity {
 
 pub type Component {
   Invulnerable
+  Sentient
 
   Named(name: String)
   Physical(hp: Int, size: Int)
@@ -60,6 +61,7 @@ pub type Component {
 fn component_priority(component: Component) -> Int {
   case component {
     Invulnerable -> 1
+    Sentient -> 2
 
     Named(_) -> 100
     Physical(_, _) -> 110
@@ -79,6 +81,7 @@ fn component_priority(component: Component) -> Int {
 }
 
 pub type Query {
+  QuerySentient(bool: Bool)
   QueryName(name: Option(String))
   QueryStatus(hp: Option(Int))
   QueryEquipable(slots: List(PaperDollSlotType))
@@ -97,6 +100,7 @@ pub fn query(entity: Entity, query: Query) -> Query {
 
 fn query_loop(q: Query, c: Component) -> Query {
   case c, q {
+    Sentient, QuerySentient(_) -> QuerySentient(bool: True)
     Named(name), QueryName(_) -> QueryName(name: Some(name))
     Physical(hp, _size), QueryStatus(_) -> QueryStatus(hp: Some(hp))
     Equipable(slots), QueryEquipable(_) -> QueryEquipable(slots: slots)

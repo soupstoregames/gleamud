@@ -38,6 +38,8 @@ pub type Update {
     name: String,
     description: String,
     exits: Dict(world.Direction, Int),
+    sentient_entities: List(String),
+    static_entities: List(String),
   )
   UpdatePlayerSpawned(name: String)
   UpdatePlayerQuit(name: String)
@@ -142,12 +144,15 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       )
 
       let assert Ok(room) = dict.get(state.rooms, room_id)
+      let entities = list_entities(entity.id, room)
       process.send(
         update_subject,
         UpdateRoomDescription(
           name: room.template.name,
           description: room.template.description,
           exits: room.template.exits,
+          sentient_entities: entities.0,
+          static_entities: entities.1,
         ),
       )
 
@@ -183,6 +188,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       let assert Ok(controlled_entity) =
         dict.get(state.controlled_entities, entity_id)
       let assert Ok(room) = dict.get(state.rooms, controlled_entity.room_id)
+      let entities = list_entities(entity_id, room)
 
       process.send(
         controlled_entity.update_subject,
@@ -190,6 +196,8 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
           name: room.template.name,
           description: room.template.description,
           exits: room.template.exits,
+          sentient_entities: entities.0,
+          static_entities: entities.1,
         ),
       )
 
@@ -241,12 +249,15 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
             |> move_entity(entity, controlled_entity.room_id, target_room_id)
 
           // send the entity the new room description
+          let entities = list_entities(entity_id, target_room)
           process.send(
             controlled_entity.update_subject,
             UpdateRoomDescription(
               name: target_room.template.name,
               description: target_room.template.description,
               exits: target_room.template.exits,
+              sentient_entities: entities.0,
+              static_entities: entities.1,
             ),
           )
 
@@ -287,12 +298,15 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
             state
             |> move_entity(entity, controlled_entity.room_id, target_room_id)
 
+          let entities = list_entities(entity_id, target_room)
           process.send(
             controlled_entity.update_subject,
             UpdateRoomDescription(
               name: target_room.template.name,
               description: target_room.template.description,
               exits: target_room.template.exits,
+              sentient_entities: entities.0,
+              static_entities: entities.1,
             ),
           )
 
@@ -453,12 +467,15 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               let assert Ok(room) =
                 dict.get(new_state.rooms, controlled_entity.room_id)
 
+              let entities = list_entities(entity_id, room)
               process.send(
                 controlled_entity.update_subject,
                 UpdateRoomDescription(
                   name: room.template.name,
                   description: room.template.description,
                   exits: room.template.exits,
+                  sentient_entities: entities.0,
+                  static_entities: entities.1,
                 ),
               )
 
@@ -668,4 +685,30 @@ fn query_entity_name(entity: Entity) -> String {
     dataentity.QueryName(Some(name)) -> name
     _ -> "Unknown"
   }
+}
+
+fn list_entities(viewer_id: Int, room: Room) -> #(List(String), List(String)) {
+  room.entities
+  |> dict.values
+  |> list.filter(fn(entity) { entity.id != viewer_id })
+  |> list.fold(#([], []), fn(initial, entity) {
+    let sentient_query =
+      entity.data
+      |> dataentity.query(dataentity.QuerySentient(False))
+    let name_query =
+      entity.data
+      |> dataentity.query(dataentity.QueryName(None))
+
+    case name_query, sentient_query {
+      dataentity.QueryName(Some(name)), dataentity.QuerySentient(True) -> #(
+        [name, ..initial.0],
+        initial.1,
+      )
+      dataentity.QueryName(Some(name)), dataentity.QuerySentient(False) -> #(
+        initial.0,
+        [name, ..initial.1],
+      )
+      _, _ -> initial
+    }
+  })
 }

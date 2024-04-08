@@ -207,8 +207,16 @@ fn handle_update(
   let assert Ok(_) = case update {
     simulation.UpdateCommandFailed(reason) ->
       render.command_failed(state.conn, state.size.0, reason)
-    simulation.UpdateRoomDescription(name, desc, exits) ->
-      render.room_descripion(state.conn, name, desc, exits, state.size.0)
+    simulation.UpdateRoomDescription(name, desc, exits, sentients, statics) ->
+      render.room_descripion(
+        state.conn,
+        state.size.0,
+        name,
+        desc,
+        exits,
+        sentients,
+        statics,
+      )
     simulation.UpdatePlayerSpawned(name) ->
       render.player_spawned(state.conn, state.size.0, name)
     simulation.UpdatePlayerQuit(name) ->

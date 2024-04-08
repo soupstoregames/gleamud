@@ -147,10 +147,12 @@ pub fn backspace(conn: Connection(_user_message)) {
 
 pub fn room_descripion(
   conn: Connection(_user_message),
+  width,
   name,
   desc,
   exits,
-  width,
+  sentients,
+  statics,
 ) {
   name
   |> string.append("\n")
@@ -158,14 +160,47 @@ pub fn room_descripion(
   |> green
   |> string.append(desc)
   |> string.append("\n")
+  |> string.append(render_statics(statics))
   |> string.append(render_exits(exits))
+  |> string.append(render_sentients(sentients))
   |> word_wrap(width)
   |> println(conn, _)
 }
 
+fn render_statics(statics: List(String)) -> String {
+  case list.length(statics) {
+    0 -> ""
+    1 ->
+      "On the floor, there is a "
+      <> statics
+      |> list.map(bold)
+      |> string.join(", ")
+      <> "."
+    _ -> {
+      "On the floor, there is are "
+      <> statics
+      |> list.map(bold)
+      |> string.join(", ")
+      <> "."
+    }
+  }
+}
+
+fn render_sentients(statics: List(String)) -> String {
+  case list.length(statics) {
+    0 -> ""
+    _ ->
+      "With you is "
+      <> statics
+      |> list.map(bold)
+      |> string.join(", ")
+      <> "."
+  }
+}
+
 fn render_exits(exits: Dict(world.Direction, Int)) -> String {
   case dict.size(exits) {
-    0 -> "There doesn't seem to be a way out."
+    0 -> "There doesn't seem to be a way out.\n"
     1 ->
       "There is an exit going "
       <> exits
@@ -174,7 +209,7 @@ fn render_exits(exits: Dict(world.Direction, Int)) -> String {
       |> result.unwrap(world.Up)
       |> world.dir_to_str
       |> bold
-      <> "."
+      <> ".\n"
     _ -> {
       "There are exits going "
       <> exits
@@ -182,7 +217,7 @@ fn render_exits(exits: Dict(world.Direction, Int)) -> String {
       |> list.map(world.dir_to_str)
       |> list.map(bold)
       |> string.join(", ")
-      <> "."
+      <> ".\n"
     }
   }
 }

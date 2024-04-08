@@ -4,6 +4,7 @@ import data/entity
 
 pub fn create_guest_player() -> entity.Entity {
   entity.Entity([
+    entity.Sentient,
     entity.Named(name: "Guest" <> int.to_string(int.random(99_999))),
     entity.Physical(hp: 10, size: 0),
     entity.PaperDollHead(entity: None),
