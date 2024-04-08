@@ -336,6 +336,23 @@ pub fn command_failed(
   |> println(conn, _)
 }
 
+pub fn emote(
+  conn: Connection(_user_message),
+  width,
+  is_admin: Bool,
+  name: #(String, Int),
+  text: String,
+) {
+  let assert Ok(_) = erase_line(conn, width)
+  name
+  |> render_name(is_admin)
+  |> bold
+  |> string.append(" ")
+  |> string.append(text)
+  |> word_wrap(width)
+  |> println(conn, _)
+}
+
 pub fn speech(
   conn: Connection(_user_message),
   width,

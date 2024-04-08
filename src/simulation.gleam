@@ -18,6 +18,7 @@ pub type Command {
 
   CommandQuit(entity_id: Int)
   CommandLook(entity_id: Int)
+  CommandEmote(entity_id: Int, text: String)
   CommandSayRoom(entity_id: Int, text: String)
   CommandMove(entity_id: Int, dir: world.Direction)
 
@@ -60,6 +61,7 @@ pub type Update {
   )
   UpdatePlayerSpawned(name: #(String, Int))
   UpdatePlayerQuit(name: #(String, Int))
+  UpdateEmote(name: #(String, Int), text: String)
   UpdateSayRoom(name: #(String, Int), text: String)
   UpdateEntityLeft(name: #(String, Int), dir: world.Direction)
   UpdateEntityArrived(name: #(String, Int), dir: world.Direction)
@@ -189,6 +191,18 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
 
       state
       |> send_room_description_to_entity(entity_id, room_id)
+      |> actor.continue
+    }
+    CommandEmote(entity_id, text) -> {
+      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
+      let room_id = ce.room_id
+      let entity_name = query_entity_name_forced(state, room_id, entity_id)
+
+      state
+      |> send_update_to_room(
+        room_id,
+        UpdateEmote(#(entity_name, entity_id), text),
+      )
       |> actor.continue
     }
     CommandSayRoom(entity_id, text) -> {

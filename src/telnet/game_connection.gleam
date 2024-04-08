@@ -158,6 +158,11 @@ fn handle_data_command(state: State, data: BitArray) -> State {
           let assert Ok(_) = render.prompt_command(state.conn)
           Nil
         }
+        Error(EmoteWhat) -> {
+          let assert Ok(_) = render.error(state.conn, "Emote what?")
+          let assert Ok(_) = render.prompt_command(state.conn)
+          Nil
+        }
         Ok(simulation.CommandQuit(_) as com) -> {
           let assert Ok(_) =
             transport.close(state.conn.transport, state.conn.socket)
@@ -234,6 +239,8 @@ fn handle_update(
       render.player_spawned(state.conn, state.size.0, state.is_admin, name)
     simulation.UpdatePlayerQuit(name) ->
       render.player_quit(state.conn, state.size.0, state.is_admin, name)
+    simulation.UpdateEmote(name, text) ->
+      render.emote(state.conn, state.size.0, state.is_admin, name, text)
     simulation.UpdateSayRoom(name, text) ->
       render.speech(state.conn, state.size.0, state.is_admin, name, text)
     simulation.UpdateEntityVanished(name) ->
@@ -288,6 +295,7 @@ type ParseCommandError {
   UnknownCommand
   InvalidCommand(usage: String)
   SayWhat
+  EmoteWhat
 }
 
 fn parse_command(
@@ -302,6 +310,15 @@ fn parse_command(
         0 -> Error(SayWhat)
         _ ->
           Ok(simulation.CommandSayRoom(
+            entity_id: entity_id,
+            text: string.join(rest, " "),
+          ))
+      }
+    ["emote", ..rest] | ["em", ..rest] | ["me", ..rest] ->
+      case list.length(rest) {
+        0 -> Error(EmoteWhat)
+        _ ->
+          Ok(simulation.CommandEmote(
             entity_id: entity_id,
             text: string.join(rest, " "),
           ))
