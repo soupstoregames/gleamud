@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS exits (
   room_id INTEGER NOT NULL, 
   direction TEXT NOT NULL, 
   target_id INTEGER NOT NULL,
+  linked_exit INTEGER NOT NULL,
   CONSTRAINT fk_room_id
     FOREIGN KEY (room_id)
     REFERENCES rooms(id)

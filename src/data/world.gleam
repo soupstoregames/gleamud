@@ -1,7 +1,7 @@
 import gleam/dict.{type Dict}
 import gleam/dynamic
+import gleam/int
 import gleam/list
-import gleam/option.{Some}
 import sqlight
 
 pub type Direction {
@@ -19,16 +19,16 @@ pub type Direction {
 
 pub fn parse_dir(str: String) -> Result(Direction, Nil) {
   case str {
-    "north" -> Ok(North)
-    "east" -> Ok(East)
-    "south" -> Ok(South)
-    "west" -> Ok(West)
-    "northeast" -> Ok(NorthEast)
-    "southeast" -> Ok(SouthEast)
-    "southwest" -> Ok(SouthWest)
-    "northwest" -> Ok(NorthWest)
-    "up" -> Ok(Up)
-    "down" -> Ok(Down)
+    "north" | "n" -> Ok(North)
+    "east" | "e" -> Ok(East)
+    "south" | "s" -> Ok(South)
+    "west" | "w" -> Ok(West)
+    "northeast" | "ne" -> Ok(NorthEast)
+    "southeast" | "se" -> Ok(SouthEast)
+    "southwest" | "sw" -> Ok(SouthWest)
+    "northwest" | "nw" -> Ok(NorthWest)
+    "up" | "u" -> Ok(Up)
+    "down" | "d" -> Ok(Down)
     _ -> Error(Nil)
   }
 }
@@ -68,7 +68,7 @@ pub type Error {
 }
 
 pub fn load_world(conn_string: String) -> WorldTemplate {
-  let base_world =
+  let world =
     WorldTemplate(rooms: dict.new())
     |> add_room(
       0,
@@ -92,78 +92,59 @@ say <text>   say a message to the room
 
   use conn <- sqlight.with_connection(conn_string)
 
-  let sql =
-    "SELECT rooms.id, rooms.name, rooms.description, exits.id, exits.direction, exits.target_id FROM rooms LEFT JOIN exits ON rooms.id = exits.room_id;"
-
-  let room_decoder =
-    dynamic.tuple6(
-      dynamic.int,
-      dynamic.string,
-      dynamic.string,
-      dynamic.optional(dynamic.int),
-      dynamic.optional(dynamic.string),
-      dynamic.optional(dynamic.int),
-    )
+  let room_decoder = dynamic.tuple3(dynamic.int, dynamic.string, dynamic.string)
+  let room_sql =
+    "SELECT id, name, description 
+      FROM rooms "
 
   let assert Ok(rows) =
-    sqlight.query(sql, on: conn, with: [], expecting: room_decoder)
+    sqlight.query(room_sql, on: conn, with: [], expecting: room_decoder)
 
-  rows
-  |> list.fold(base_world, fn(world, row) {
-    case dict.get(world.rooms, row.0) {
-      Ok(room) -> {
-        case row.3, row.4, row.5 {
-          Some(exit_id), Some(dir_str), Some(target) -> {
-            let assert Ok(dir) = parse_dir(dir_str)
-            world
-            |> add_room(
-              row.0,
-              room
-                |> add_exit(Exit(
-                  id: exit_id,
-                  direction: dir,
-                  target_room_id: target,
-                )),
-            )
-          }
-          _, _, _ -> world
-        }
-      }
-      Error(Nil) -> {
-        case row.3, row.4, row.5 {
-          Some(exit_id), Some(dir_str), Some(target) -> {
-            let assert Ok(dir) = parse_dir(dir_str)
-            world
-            |> add_room(
-              row.0,
-              RoomTemplate(
-                  id: row.0,
-                  name: row.1,
-                  description: row.2,
-                  exits: dict.new(),
-                )
-                |> add_exit(Exit(
-                  id: exit_id,
-                  direction: dir,
-                  target_room_id: target,
-                )),
-            )
-          }
-          _, _, _ ->
-            world
-            |> add_room(
-              row.0,
-              RoomTemplate(
-                id: row.0,
-                name: row.1,
-                description: row.2,
-                exits: dict.new(),
-              ),
-            )
-        }
-      }
-    }
-  })
+  let world =
+    rows
+    |> list.fold(world, fn(acc, row) {
+      acc
+      |> add_room(
+        row.0,
+        RoomTemplate(
+          id: row.0,
+          name: row.1,
+          description: row.2,
+          exits: dict.new(),
+        ),
+      )
+    })
+
+  let exit_decoder =
+    dynamic.tuple4(dynamic.int, dynamic.string, dynamic.int, dynamic.int)
+  let exit_sql =
+    "SELECT id, direction, target_id, linked_exit
+      FROM exits WHERE room_id = ?"
+
+  WorldTemplate(
+    rooms: world.rooms
+    |> dict.map_values(fn(room_id, room) {
+      let assert Ok(rows) =
+        sqlight.query(
+          exit_sql,
+          on: conn,
+          with: [sqlight.int(room_id)],
+          expecting: exit_decoder,
+        )
+
+      rows
+      |> list.fold(room, fn(acc, row) {
+        let assert Ok(dir) = parse_dir(row.1)
+        acc
+        |> add_exit(Exit(
+          id: row.0,
+          direction: dir,
+          target_room_id: row.2,
+          linked_exit: row.3,
+        ))
+      })
+    }),
+  )
 }
 
 pub fn insert_room(conn_string, name: String) -> Result(Int, Error) {
@@ -196,10 +177,19 @@ pub fn insert_exit(
 ) -> Result(List(#(Int, Exit)), Error) {
   use conn <- sqlight.with_connection(conn_string)
 
-  let decoder =
-    dynamic.tuple4(dynamic.int, dynamic.int, dynamic.string, dynamic.int)
   let sql =
-    "INSERT INTO `exits` (`room_id`, `direction`, `target_id`) VALUES (?, ?, ?), (?, ?, ?) RETURNING id, room_id, direction, target_id;"
+    "INSERT INTO `exits` (`room_id`, `direction`, `target_id`, `linked_exit`) 
+    VALUES (?, ?, ?, 0),  (?, ?, ?, 0) 
+    RETURNING `id`, `room_id`, `direction`, `target_id`, `linked_exit`;"
+
+  let decoder =
+    dynamic.tuple5(
+      dynamic.int,
+      dynamic.int,
+      dynamic.string,
+      dynamic.int,
+      dynamic.int,
+    )
 
   case
     sqlight.query(
@@ -216,13 +206,38 @@ pub fn insert_exit(
       expecting: decoder,
     )
   {
-    Ok(rows) ->
+    Ok(rows) -> {
+      let ids =
+        rows
+        |> list.map(fn(row) { row.0 })
+        |> list.reverse
+
       Ok(
-        list.map(rows, fn(row) {
+        rows
+        |> list.zip(ids)
+        |> list.map(fn(tuple) {
+          let #(row, other_id) = tuple
+          let sql =
+            "UPDATE `exits` SET `linked_exit` = "
+            <> int.to_string(other_id)
+            <> " WHERE id = "
+            <> int.to_string(row.0)
+            <> ";"
+          let assert Ok(_) = sqlight.exec(sql, conn)
+
           let assert Ok(dir) = parse_dir(row.2)
-          #(row.1, Exit(id: row.0, direction: dir, target_room_id: row.3))
+          #(
+            row.1,
+            Exit(
+              id: row.0,
+              direction: dir,
+              target_room_id: row.3,
+              linked_exit: other_id,
+            ),
+          )
         }),
       )
+    }
     Error(sqlight.SqlightError(_code, message, _offset)) -> {
       Error(SqlError(message))
     }
@@ -301,5 +316,5 @@ fn add_exit(room: RoomTemplate, exit: Exit) {
 }
 
 pub type Exit {
-  Exit(id: Int, direction: Direction, target_room_id: Int)
+  Exit(id: Int, direction: Direction, target_room_id: Int, linked_exit: Int)
 }

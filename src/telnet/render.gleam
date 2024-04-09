@@ -220,7 +220,13 @@ fn render_exits(
         let name =
           render_name(#(world.dir_to_str(tuple.0), { tuple.1 }.id), is_admin)
         case is_admin {
-          True -> name <> "->#" <> int.to_string({ tuple.1 }.target_room_id)
+          True ->
+            name
+            <> "->#"
+            <> int.to_string({ tuple.1 }.target_room_id)
+            <> "(#"
+            <> int.to_string({ tuple.1 }.linked_exit)
+            <> ")"
           False -> name
         }
       }
@@ -234,7 +240,13 @@ fn render_exits(
         let name =
           render_name(#(world.dir_to_str(tuple.0), { tuple.1 }.id), is_admin)
         case is_admin {
-          True -> name <> "->#" <> int.to_string({ tuple.1 }.target_room_id)
+          True ->
+            name
+            <> "->#"
+            <> int.to_string({ tuple.1 }.target_room_id)
+            <> "(#"
+            <> int.to_string({ tuple.1 }.linked_exit)
+            <> ")"
           False -> name
         }
       })
