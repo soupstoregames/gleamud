@@ -19,6 +19,7 @@ pub type Command {
 
   CommandQuit(entity_id: Int)
   CommandLook(entity_id: Int)
+  CommandPaperDoll(entity_id: Int)
   CommandEmote(entity_id: Int, text: String)
   CommandSayRoom(entity_id: Int, text: String)
   CommandMove(entity_id: Int, dir: world.Direction)
@@ -58,6 +59,9 @@ pub type Update {
     template: world.RoomTemplate,
     sentient_entities: List(#(String, Int)),
     static_entities: List(#(String, Int)),
+  )
+  UpdateEquipment(
+    paper_doll: List(#(dataentity.PaperDollSlotType, Option(String))),
   )
   UpdatePlayerSpawned(name: #(String, Int))
   UpdatePlayerQuit(name: #(String, Int))
@@ -148,10 +152,11 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
     Shutdown -> actor.continue(state)
     JoinAsGuest(update_subject, client) -> {
       let room_id = 0
+      let entity_id = state.next_temp_entity_id
       let entity =
         Entity(
-          id: state.next_temp_entity_id,
-          data: prefabs.create_guest_player(),
+          id: entity_id,
+          data: prefabs.create_guest_player(entity_id),
           update_subject: Some(update_subject),
         )
       process.send(client, Ok(entity.id))
@@ -191,6 +196,15 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
 
       state
       |> send_room_description_to_entity(entity_id, room_id)
+      |> actor.continue
+    }
+    CommandPaperDoll(entity_id) -> {
+      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
+      let room_id = ce.room_id
+      let paper_doll = query_entity_equipment(state, room_id, entity_id)
+
+      state
+      |> send_update_to_entity(entity_id, UpdateEquipment(paper_doll))
       |> actor.continue
     }
     CommandEmote(entity_id, text) -> {
@@ -820,6 +834,21 @@ fn query_entity_name_forced(
   case query {
     dataentity.QueryNameForced(Some(name)) -> name
     _ -> "Unknown"
+  }
+}
+
+fn query_entity_equipment(
+  state: State,
+  room_id: Int,
+  entity_id: Int,
+) -> List(#(dataentity.PaperDollSlotType, Option(String))) {
+  let assert Ok(entity) = get_entity(state, room_id, entity_id)
+  let query =
+    entity.data
+    |> dataentity.query(dataentity.QueryPaperDoll([]))
+  case query {
+    dataentity.QueryPaperDoll(list) -> list
+    _ -> []
   }
 }
 

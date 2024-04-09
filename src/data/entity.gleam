@@ -40,6 +40,7 @@ pub fn new(components: List(Component)) -> Entity {
 }
 
 pub type Component {
+  Id(id: Int)
   Named(name: String)
   Physical(hp: Int, size: Int)
 
@@ -110,6 +111,8 @@ fn is_component_type(
 
 fn component_priority(component: Component) -> Int {
   case component {
+    Id(_) -> 0
+
     Named(_) -> 100
     Physical(_, _) -> 110
 

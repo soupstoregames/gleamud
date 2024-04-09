@@ -1,7 +1,8 @@
-import chromatic.{bold, bright_blue, green, magenta, red, yellow}
+import chromatic.{bold, bright_blue, gray, green, magenta, red, yellow}
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import gleam/bytes_builder
@@ -9,6 +10,7 @@ import gleam/regex
 import glisten.{type Connection}
 import telnet/constants
 import data/world
+import data/entity as dataentity
 
 pub const logo_str = "
 
@@ -165,6 +167,16 @@ pub fn room_descripion(
   |> string.append(render_statics(statics, is_admin))
   |> string.append(render_exits(exits, is_admin))
   |> string.append(render_sentients(sentients, is_admin))
+  |> word_wrap(width)
+  |> println(conn, _)
+}
+
+pub fn paper_doll(conn: Connection(_user_message), width, is_admin, paper_doll) {
+  paper_doll
+  |> list.map(fn(slot: #(dataentity.PaperDollSlotType, Option(String))) {
+    render_paper_doll_slot_type(slot.0) <> ": " <> render_item(slot.1)
+  })
+  |> string.join("\n")
   |> word_wrap(width)
   |> println(conn, _)
 }
@@ -490,5 +502,25 @@ fn render_name(name_id: #(String, Int), is_admin: Bool) -> String {
   case is_admin {
     False -> name_id.0
     True -> name_id.0 <> "(#" <> int.to_string(name_id.1) <> ")"
+  }
+}
+
+fn render_paper_doll_slot_type(slot: dataentity.PaperDollSlotType) -> String {
+  case slot {
+    dataentity.Head -> "Head"
+    dataentity.Chest -> "Chest"
+    dataentity.Back -> "Back"
+    dataentity.PrimaryHand -> "Primary hand"
+    dataentity.OffHand -> "Off hand"
+    dataentity.Legs -> "Legs"
+    dataentity.Feet -> "Feet"
+  }
+  |> bold
+}
+
+fn render_item(item: Option(String)) -> String {
+  case item {
+    Some(name) -> name
+    None -> gray("Empty")
   }
 }

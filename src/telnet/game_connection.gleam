@@ -239,6 +239,8 @@ fn handle_update(
         sentient_entities,
         static_entities,
       )
+    simulation.UpdateEquipment(paper_doll) ->
+      render.paper_doll(state.conn, state.size.0, state.is_admin, paper_doll)
     simulation.UpdatePlayerSpawned(name) ->
       render.player_spawned(state.conn, state.size.0, state.is_admin, name)
     simulation.UpdatePlayerQuit(name) ->
@@ -309,6 +311,7 @@ fn parse_command(
   case string.split(str, " ") {
     ["quit", ..] -> Ok(simulation.CommandQuit(entity_id))
     ["look", ..] | ["l", ..] -> Ok(simulation.CommandLook(entity_id))
+    ["equipment", ..] | ["eq"] -> Ok(simulation.CommandPaperDoll(entity_id))
     ["say", ..rest] ->
       case list.length(rest) {
         0 -> Error(SayWhat)
