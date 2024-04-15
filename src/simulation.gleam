@@ -9,6 +9,7 @@ import gleam/result
 import data/entity as dataentity
 import data/prefabs
 import data/world
+import gleam/io
 
 //MARK: Commands
 /// Commands are sent from game connections to entities
@@ -22,7 +23,7 @@ pub type Command {
   CommandPaperDoll(entity_id: Int)
   CommandEmote(entity_id: Int, text: String)
   CommandSayRoom(entity_id: Int, text: String)
-  CommandMove(entity_id: Int, dir: world.Direction)
+  CommandWalk(entity_id: Int, dir: world.Direction)
 
   AdminHide(entity_id: Int)
   AdminShow(entity_id: Int)
@@ -81,9 +82,9 @@ type State {
   State(
     conn_string: String,
     next_temp_entity_id: Int,
-    sim_subject: Subject(Command),
     rooms: Dict(Int, Room),
-    controlled_entities: Dict(Int, ControlledEntity),
+    entity_subjects: Dict(Int, Subject(Update)),
+    entity_locations: Dict(Int, Location),
   )
 }
 
@@ -99,8 +100,9 @@ type Entity {
   )
 }
 
-type ControlledEntity {
-  ControlledEntity(room_id: Int, update_subject: Subject(Update))
+type Location {
+  RoomLocation(room_id: Int)
+  EntityLocation(entity_id: Int)
 }
 
 // actor functions
@@ -130,7 +132,7 @@ pub fn start(conn_string) -> Result(Subject(Command), actor.StartError) {
           |> dict.from_list()
 
         actor.Ready(
-          State(conn_string, -1, sim_subject, rooms, dict.new()),
+          State(conn_string, -1, rooms, dict.new(), dict.new()),
           selector,
         )
       },
@@ -152,6 +154,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
     Shutdown -> actor.continue(state)
     JoinAsGuest(update_subject, client) -> {
       let room_id = 0
+      let location = RoomLocation(room_id)
       let entity_id = state.next_temp_entity_id
       let entity =
         Entity(
@@ -161,56 +164,65 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
         )
       process.send(client, Ok(entity.id))
 
-      let assert dataentity.QueryNameForced(Some(name)) =
-        dataentity.query(entity.data, dataentity.QueryNameForced(None))
+      let name = {
+        let query =
+          entity.data
+          |> dataentity.query(dataentity.QueryName(None))
+        case query {
+          dataentity.QueryName(Some(name)) -> name
+          _ -> "unknown"
+        }
+      }
 
       state
       |> send_update_to_room(room_id, UpdatePlayerSpawned(#(name, entity.id)))
-      |> add_entity(entity, room_id)
+      |> add_entity(entity, location)
       |> send_room_description_to_entity(entity.id, room_id)
       |> increment_next_temp_entity_id
       |> actor.continue
     }
     //MARK: Command handlers
     CommandQuit(entity_id) -> {
-      // get all the stuff
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let visible = query_entity_visible(state, entity_id, location)
 
       // tell all other controlled entities in that room that the player quit
-      case query_entity_name(state, room_id, entity_id) {
-        Some(name) ->
+      case visible {
+        True -> {
+          let room_id = room_id(state, location)
+          let name = query_entity_name(state, entity_id, location)
+
           state
-          |> remove_entity(entity_id, room_id)
+          |> remove_entity(entity_id, location)
           |> send_update_to_room(room_id, UpdatePlayerQuit(#(name, entity_id)))
           |> actor.continue
-        _ ->
+        }
+        False ->
           state
-          |> remove_entity(entity_id, room_id)
+          |> remove_entity(entity_id, location)
           |> actor.continue
       }
     }
     CommandLook(entity_id) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let room_id = room_id(state, location)
 
       state
       |> send_room_description_to_entity(entity_id, room_id)
       |> actor.continue
     }
     CommandPaperDoll(entity_id) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
-      let paper_doll = query_entity_equipment(state, room_id, entity_id)
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let paper_doll = query_entity_equipment(state, entity_id, location)
 
       state
       |> send_update_to_entity(entity_id, UpdateEquipment(paper_doll))
       |> actor.continue
     }
     CommandEmote(entity_id, text) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
-      let entity_name = query_entity_name_forced(state, room_id, entity_id)
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let room_id = room_id(state, location)
+      let entity_name = query_entity_name(state, entity_id, location)
 
       state
       |> send_update_to_room(
@@ -220,129 +232,153 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       |> actor.continue
     }
     CommandSayRoom(entity_id, text) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
-      let entity_name = query_entity_name_forced(state, room_id, entity_id)
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let room_id = room_id(state, location)
+      let name = query_entity_name(state, entity_id, location)
 
       state
-      |> send_update_to_room(
-        room_id,
-        UpdateSayRoom(#(entity_name, entity_id), text),
-      )
+      |> send_update_to_room(room_id, UpdateSayRoom(#(name, entity_id), text))
       |> actor.continue
     }
-    CommandMove(entity_id, dir) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+    CommandWalk(entity_id, dir) -> {
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
 
-      let assert Ok(room) = dict.get(state.rooms, room_id)
-      case dict.get(room.template.exits, dir) {
-        Ok(exit) -> {
-          let assert Ok(entity) = get_entity(state, room_id, entity_id)
-          let assert Ok(target_room) =
-            dict.get(state.rooms, exit.target_room_id)
+      case location {
+        RoomLocation(room_id) -> {
+          let assert Ok(room) = dict.get(state.rooms, room_id)
 
-          // find the exit that goes the other way
-          let assert Ok(reverse_exit) =
-            target_room.template.exits
-            |> dict.to_list
-            |> list.find(fn(exit) { { exit.1 }.target_room_id == room_id })
+          case dict.get(room.template.exits, dir) {
+            Ok(exit) -> {
+              let assert Ok(entity) = get_entity(state, entity_id, location)
+              let assert Ok(target_room) =
+                dict.get(state.rooms, exit.target_room_id)
+              let visible = query_entity_visible(state, entity_id, location)
 
-          case query_entity_name(state, room_id, entity_id) {
-            Some(name) -> {
+              // find the exit that goes the other way
+              let assert Ok(reverse_exit) =
+                target_room.template.exits
+                |> dict.to_list
+                |> list.find(fn(exit) { { exit.1 }.target_room_id == room_id })
+
+              case visible {
+                True -> {
+                  let name = query_entity_name(state, entity_id, location)
+                  state
+                  |> send_update_to_room(
+                    exit.target_room_id,
+                    UpdateEntityArrived(#(name, entity.id), reverse_exit.0),
+                  )
+                  |> move_entity(entity.id, location, exit.target_room_id)
+                  |> send_room_description_to_entity(
+                    entity_id,
+                    exit.target_room_id,
+                  )
+                  |> send_update_to_room(
+                    room_id,
+                    UpdateEntityLeft(#(name, entity.id), dir),
+                  )
+                  |> actor.continue
+                }
+                False ->
+                  state
+                  |> move_entity(entity.id, location, exit.target_room_id)
+                  |> send_room_description_to_entity(
+                    entity_id,
+                    exit.target_room_id,
+                  )
+                  |> actor.continue
+              }
+            }
+            Error(Nil) -> {
               state
-              |> send_update_to_room(
-                exit.target_room_id,
-                UpdateEntityArrived(#(name, entity.id), reverse_exit.0),
-              )
-              |> move_entity(room_id, entity.id, exit.target_room_id)
-              |> send_room_description_to_entity(entity_id, exit.target_room_id)
-              |> send_update_to_room(
-                room_id,
-                UpdateEntityLeft(#(name, entity.id), dir),
-              )
+              |> send_failed_to_entity(entity_id, "There is no exit that way.")
               |> actor.continue
             }
-            _ ->
-              state
-              |> move_entity(room_id, entity.id, exit.target_room_id)
-              |> send_room_description_to_entity(entity_id, exit.target_room_id)
-              |> actor.continue
           }
         }
-        Error(Nil) -> {
-          state
-          |> send_failed_to_entity(entity_id, "There is no exit that way.")
-          |> actor.continue
-        }
+        EntityLocation(entity_id) -> todo
       }
     }
 
     //MARK: Admin command handling
     AdminHide(entity_id) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let visible = query_entity_visible(state, entity_id, location)
 
-      case query_entity_visible(state, room_id, entity_id) {
-        True -> {
-          case query_entity_name(state, room_id, entity_id) {
-            Some(name) ->
-              state
-              |> send_update_to_room(
-                room_id,
-                UpdateEntityVanished(#(name, entity_id)),
-              )
-              |> add_components(room_id, entity_id, [dataentity.Invisible])
-              |> actor.continue
-            _ ->
-              state
-              |> add_components(room_id, entity_id, [dataentity.Invisible])
-              |> actor.continue
-          }
-        }
-        False -> {
+      case visible, location {
+        False, _ -> {
           state
           |> send_failed_to_entity(entity_id, "Already hidden")
+          |> actor.continue
+        }
+        True, RoomLocation(room_id) -> {
+          let name = query_entity_name(state, entity_id, location)
+          state
+          |> send_update_to_room(
+            room_id,
+            UpdateEntityVanished(#(name, entity_id)),
+          )
+          |> add_components(entity_id, location, [dataentity.Invisible])
+          |> actor.continue
+        }
+        _, _ -> {
+          state
+          |> add_components(entity_id, location, [dataentity.Invisible])
           |> actor.continue
         }
       }
     }
     AdminShow(entity_id) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let visible = query_entity_visible(state, entity_id, location)
 
-      case query_entity_visible(state, room_id, entity_id) {
-        True -> {
+      case visible, location {
+        True, _ -> {
           state
           |> send_failed_to_entity(entity_id, "Already visible")
           |> actor.continue
         }
-        False -> {
-          let name = query_entity_name_forced(state, room_id, entity_id)
+        False, RoomLocation(room_id) -> {
+          let name = query_entity_name(state, entity_id, location)
           state
-          |> remove_components(room_id, entity_id, dataentity.TInvisible)
+          |> remove_components(entity_id, location, fn(component) {
+            case component {
+              dataentity.Invisible -> False
+              _ -> True
+            }
+          })
           |> send_update_to_room(
             room_id,
             UpdateEntityAppeared(#(name, entity_id)),
           )
           |> actor.continue
         }
+        _, _ -> {
+          state
+          |> remove_components(entity_id, location, fn(component) {
+            case component {
+              dataentity.Invisible -> False
+              _ -> True
+            }
+          })
+          |> actor.continue
+        }
       }
     }
     AdminTeleport(entity_id, target_room_id) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
 
       case dict.has_key(state.rooms, target_room_id) {
         True -> {
-          case query_entity_name(state, room_id, entity_id) {
-            Some(name) -> {
+          case location {
+            RoomLocation(room_id) -> {
+              let name = query_entity_name(state, entity_id, location)
               state
               |> send_update_to_room(
                 target_room_id,
                 UpdateEntityAppeared(#(name, entity_id)),
               )
-              |> move_entity(room_id, entity_id, target_room_id)
+              |> move_entity(entity_id, location, target_room_id)
               |> send_room_description_to_entity(entity_id, target_room_id)
               |> send_update_to_room(
                 room_id,
@@ -350,12 +386,7 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
               )
               |> actor.continue
             }
-            _ -> {
-              state
-              |> move_entity(room_id, entity_id, target_room_id)
-              |> send_room_description_to_entity(entity_id, target_room_id)
-              |> actor.continue
-            }
+            EntityLocation(entity_id) -> todo
           }
         }
         False -> {
@@ -384,8 +415,8 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       }
     }
     AdminTunnel(entity_id, dir, target_room_id, reverse_dir) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let room_id = room_id(state, location)
       let assert Ok(room) = dict.get(state.rooms, room_id)
 
       // cant tunnel to room 0
@@ -464,8 +495,8 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       }
     }
     AdminRoomName(entity_id, name) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let room_id = room_id(state, location)
 
       case room_id == 0 {
         False ->
@@ -490,8 +521,8 @@ fn loop(message: Command, state: State) -> actor.Next(Command, State) {
       }
     }
     AdminRoomDescription(entity_id, description) -> {
-      let assert Ok(ce) = dict.get(state.controlled_entities, entity_id)
-      let room_id = ce.room_id
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      let room_id = room_id(state, location)
 
       case room_id == 0 {
         False -> {
@@ -530,125 +561,154 @@ pub fn stop(subject: Subject(Command)) {
 }
 
 //MARK: state functions
-fn add_entity(state: State, entity: Entity, room_id: Int) -> State {
-  let assert Ok(room) = dict.get(state.rooms, room_id)
-  case entity.update_subject {
-    Some(subject) ->
-      State(
-        ..state,
-        controlled_entities: dict.insert(
-          state.controlled_entities,
-          entity.id,
-          ControlledEntity(room_id, subject),
-        ),
-        rooms: dict.insert(
-          state.rooms,
-          room_id,
-          Room(..room, entities: dict.insert(room.entities, entity.id, entity)),
-        ),
-      )
-    None ->
-      State(
-        ..state,
-        rooms: dict.insert(
-          state.rooms,
-          room_id,
-          Room(..room, entities: dict.insert(room.entities, entity.id, entity)),
-        ),
-      )
+fn add_entity(state: State, entity: Entity, location: Location) -> State {
+  case location {
+    RoomLocation(room_id) -> {
+      let assert Ok(room) = dict.get(state.rooms, room_id)
+      case entity.update_subject {
+        Some(subject) ->
+          State(
+            ..state,
+            entity_subjects: dict.insert(
+              state.entity_subjects,
+              entity.id,
+              subject,
+            ),
+            entity_locations: dict.insert(
+              state.entity_locations,
+              entity.id,
+              location,
+            ),
+            rooms: dict.insert(
+              state.rooms,
+              room_id,
+              Room(
+                ..room,
+                entities: dict.insert(room.entities, entity.id, entity),
+              ),
+            ),
+          )
+        None ->
+          State(
+            ..state,
+            rooms: dict.insert(
+              state.rooms,
+              room_id,
+              Room(
+                ..room,
+                entities: dict.insert(room.entities, entity.id, entity),
+              ),
+            ),
+          )
+      }
+    }
+    EntityLocation(_) -> todo
   }
 }
 
-fn remove_entity(state: State, entity_id: Int, room_id: Int) -> State {
-  let assert Ok(room) = dict.get(state.rooms, room_id)
-  State(
-    ..state,
-    controlled_entities: dict.delete(state.controlled_entities, entity_id),
-    rooms: dict.insert(
-      state.rooms,
-      room_id,
-      Room(..room, entities: dict.delete(room.entities, entity_id)),
-    ),
-  )
+fn remove_entity(state: State, entity_id: Int, location: Location) -> State {
+  case location {
+    RoomLocation(room_id) -> {
+      let assert Ok(room) = dict.get(state.rooms, room_id)
+      State(
+        ..state,
+        entity_subjects: dict.delete(state.entity_subjects, entity_id),
+        entity_locations: dict.delete(state.entity_locations, entity_id),
+        rooms: dict.insert(
+          state.rooms,
+          room_id,
+          Room(..room, entities: dict.delete(room.entities, entity_id)),
+        ),
+      )
+    }
+    EntityLocation(_) -> todo
+  }
 }
 
 fn add_components(
   state: State,
-  room_id: Int,
   entity_id: Int,
+  location: Location,
   components: List(dataentity.Component),
 ) -> State {
-  let assert Ok(room) = dict.get(state.rooms, room_id)
-  let assert Ok(entity) = dict.get(room.entities, entity_id)
-  State(
-    ..state,
-    rooms: dict.insert(
-      state.rooms,
-      room_id,
-      Room(
-        ..room,
-        entities: dict.insert(
-          room.entities,
-          entity.id,
-          Entity(
-            ..entity,
-            data: dataentity.add_components(entity.data, components),
+  case location {
+    RoomLocation(room_id) -> {
+      let assert Ok(room) = dict.get(state.rooms, room_id)
+      let assert Ok(entity) = dict.get(room.entities, entity_id)
+      State(
+        ..state,
+        rooms: dict.insert(
+          state.rooms,
+          room_id,
+          Room(
+            ..room,
+            entities: dict.insert(
+              room.entities,
+              entity.id,
+              Entity(
+                ..entity,
+                data: dataentity.add_components(entity.data, components),
+              ),
+            ),
           ),
         ),
-      ),
-    ),
-  )
+      )
+    }
+    EntityLocation(_) -> todo
+  }
 }
 
 fn remove_components(
   state: State,
-  room_id: Int,
   entity_id: Int,
-  component_type: dataentity.ComponentType,
+  location: Location,
+  pred: fn(dataentity.Component) -> Bool,
 ) -> State {
-  let assert Ok(room) = dict.get(state.rooms, room_id)
-  let assert Ok(entity) = dict.get(room.entities, entity_id)
-  State(
-    ..state,
-    rooms: dict.insert(
-      state.rooms,
-      room_id,
-      Room(
-        ..room,
-        entities: dict.insert(
-          room.entities,
-          entity.id,
-          Entity(
-            ..entity,
-            data: dataentity.remove_all_components_of_type(
-              entity.data,
-              component_type,
+  case location {
+    RoomLocation(room_id) -> {
+      let assert Ok(room) = dict.get(state.rooms, room_id)
+      let assert Ok(entity) = dict.get(room.entities, entity_id)
+      State(
+        ..state,
+        rooms: dict.insert(
+          state.rooms,
+          room_id,
+          Room(
+            ..room,
+            entities: dict.insert(
+              room.entities,
+              entity.id,
+              Entity(
+                ..entity,
+                data: dataentity.filter_components(entity.data, pred),
+              ),
             ),
           ),
         ),
-      ),
-    ),
-  )
+      )
+    }
+    EntityLocation(_) -> todo
+  }
 }
 
 fn move_entity(
   state: State,
-  room_id: Int,
   entity_id: Int,
+  location: Location,
   target_room_id: Int,
 ) -> State {
-  let assert Ok(room) = dict.get(state.rooms, room_id)
-  let assert Ok(entity) = dict.get(room.entities, entity_id)
-  let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
+  case location {
+    RoomLocation(room_id) -> {
+      let assert Ok(room) = dict.get(state.rooms, room_id)
+      let assert Ok(entity) = dict.get(room.entities, entity_id)
+      let assert Ok(target_room) = dict.get(state.rooms, target_room_id)
 
-  case entity.update_subject {
-    Some(subject) ->
       State(
         ..state,
-        controlled_entities: dict.insert(
-          state.controlled_entities,
+        entity_locations: dict.insert(
+          state.entity_locations,
           entity.id,
-          ControlledEntity(target_room_id, subject),
+          RoomLocation(target_room_id),
         ),
         rooms: state.rooms
         |> dict.insert(
@@ -663,22 +723,8 @@ fn move_entity(
           ),
         ),
       )
-    None ->
-      State(
-        ..state,
-        rooms: state.rooms
-        |> dict.insert(
-          room_id,
-          Room(..room, entities: dict.delete(room.entities, entity.id)),
-        )
-        |> dict.insert(
-          target_room_id,
-          Room(
-            ..target_room,
-            entities: dict.insert(target_room.entities, entity.id, entity),
-          ),
-        ),
-      )
+    }
+    EntityLocation(_) -> todo
   }
 }
 
@@ -751,17 +797,15 @@ fn set_room_description(
 
 //MARK: procedures
 fn send_update_to_entity(state: State, entity_id: Int, update: Update) {
-  let assert Ok(controlled_entity) =
-    dict.get(state.controlled_entities, entity_id)
+  let assert Ok(subject) = dict.get(state.entity_subjects, entity_id)
 
-  process.send(controlled_entity.update_subject, update)
+  process.send(subject, update)
 
   state
 }
 
 fn send_room_description_to_entity(state: State, entity_id: Int, room_id: Int) {
-  let assert Ok(controlled_entity) =
-    dict.get(state.controlled_entities, entity_id)
+  let assert Ok(subject) = dict.get(state.entity_subjects, entity_id)
   let assert Ok(room) = dict.get(state.rooms, room_id)
   let entities = list_entities(entity_id, room)
 
@@ -772,16 +816,15 @@ fn send_room_description_to_entity(state: State, entity_id: Int, room_id: Int) {
       static_entities: entities.1,
     )
 
-  process.send(controlled_entity.update_subject, update)
+  process.send(subject, update)
 
   state
 }
 
 fn send_failed_to_entity(state: State, entity_id: Int, reason: String) {
-  let assert Ok(controlled_entity) =
-    dict.get(state.controlled_entities, entity_id)
+  let assert Ok(subject) = dict.get(state.entity_subjects, entity_id)
 
-  process.send(controlled_entity.update_subject, UpdateCommandFailed(reason))
+  process.send(subject, UpdateCommandFailed(reason))
 
   state
 }
@@ -802,47 +845,37 @@ fn send_update_to_room(state: State, room_id: Int, update: Update) -> State {
 }
 
 //MARK: queries
-fn get_entity(state: State, room_id: Int, entity_id: Int) -> Result(Entity, Nil) {
-  use room <- result.try(dict.get(state.rooms, room_id))
-  dict.get(room.entities, entity_id)
+fn get_entity(
+  state: State,
+  entity_id: Int,
+  location: Location,
+) -> Result(Entity, Nil) {
+  case location {
+    RoomLocation(room_id) -> {
+      use room <- result.try(dict.get(state.rooms, room_id))
+      dict.get(room.entities, entity_id)
+    }
+    EntityLocation(_) -> todo
+  }
 }
 
-fn query_entity_name(
-  state: State,
-  room_id: Int,
-  entity_id: Int,
-) -> Option(String) {
-  let assert Ok(entity) = get_entity(state, room_id, entity_id)
+fn query_entity_name(state: State, entity_id: Int, location: Location) -> String {
+  let assert Ok(entity) = get_entity(state, entity_id, location)
   let query =
     entity.data
     |> dataentity.query(dataentity.QueryName(None))
   case query {
-    dataentity.QueryName(Some(name)) -> Some(name)
-    _ -> None
-  }
-}
-
-fn query_entity_name_forced(
-  state: State,
-  room_id: Int,
-  entity_id: Int,
-) -> String {
-  let assert Ok(entity) = get_entity(state, room_id, entity_id)
-  let query =
-    entity.data
-    |> dataentity.query(dataentity.QueryNameForced(None))
-  case query {
-    dataentity.QueryNameForced(Some(name)) -> name
-    _ -> "Unknown"
+    dataentity.QueryName(Some(name)) -> name
+    _ -> "unknown"
   }
 }
 
 fn query_entity_equipment(
   state: State,
-  room_id: Int,
   entity_id: Int,
+  location: Location,
 ) -> List(#(dataentity.PaperDollSlotType, Option(String))) {
-  let assert Ok(entity) = get_entity(state, room_id, entity_id)
+  let assert Ok(entity) = get_entity(state, entity_id, location)
   let query =
     entity.data
     |> dataentity.query(dataentity.QueryPaperDoll([]))
@@ -852,8 +885,12 @@ fn query_entity_equipment(
   }
 }
 
-fn query_entity_visible(state: State, room_id: Int, entity_id: Int) -> Bool {
-  let assert Ok(entity) = get_entity(state, room_id, entity_id)
+fn query_entity_visible(
+  state: State,
+  entity_id: Int,
+  location: Location,
+) -> Bool {
+  let assert Ok(entity) = get_entity(state, entity_id, location)
   let assert dataentity.QueryInvisible(invisible) =
     entity.data
     |> dataentity.query(dataentity.QueryInvisible(False))
@@ -884,4 +921,14 @@ fn list_entities(
       _, _ -> acc
     }
   })
+}
+
+fn room_id(state: State, location: Location) -> Int {
+  case location {
+    RoomLocation(room_id) -> room_id
+    EntityLocation(entity_id) -> {
+      let assert Ok(location) = dict.get(state.entity_locations, entity_id)
+      room_id(state, location)
+    }
+  }
 }

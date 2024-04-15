@@ -1,4 +1,3 @@
-import gleam/bool
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -61,54 +60,6 @@ pub type Component {
   Invisible
 }
 
-pub type ComponentType {
-  TNamed
-  TPhysical
-
-  TPaperDollHead
-  TPaperDollChest
-  TPaperDollBack
-  TPaperDollPrimaryHand
-  TPaperDollOffHand
-  TPaperDollLegs
-  TPaperDollFeet
-
-  TEquipable
-
-  TMeleeWeapon
-
-  TInvulnerable
-  TSentient
-  TInvisible
-}
-
-fn is_component_type(
-  component: Component,
-  component_type: ComponentType,
-) -> Bool {
-  case component_type, component {
-    TNamed, Named(..) -> True
-    TPhysical, Physical(..) -> True
-
-    TPaperDollHead, PaperDollHead(..) -> True
-    TPaperDollChest, PaperDollChest(..) -> True
-    TPaperDollBack, PaperDollBack(..) -> True
-    TPaperDollPrimaryHand, PaperDollPrimaryHand(..) -> True
-    TPaperDollOffHand, PaperDollOffHand(..) -> True
-    TPaperDollLegs, PaperDollLegs(..) -> True
-    TPaperDollFeet, PaperDollFeet(..) -> True
-
-    TEquipable, Equipable(..) -> True
-
-    TMeleeWeapon, MeleeWeapon(..) -> True
-
-    TInvulnerable, Invulnerable(..) -> True
-    TSentient, Sentient(..) -> True
-    TInvisible, Invisible(..) -> True
-    _, _ -> False
-  }
-}
-
 fn component_priority(component: Component) -> Int {
   case component {
     Id(_) -> 0
@@ -138,7 +89,6 @@ pub type Query {
   QuerySentient(bool: Bool)
   QueryInvisible(bool: Bool)
   QueryName(name: Option(String))
-  QueryNameForced(name: Option(String))
   QueryStatus(hp: Option(Int))
   QueryEquipable(slots: List(PaperDollSlotType))
   QueryPaperDoll(slots: List(#(PaperDollSlotType, Option(String))))
@@ -155,7 +105,6 @@ pub fn query(entity: Entity, query: Query) -> Query {
 fn query_loop(q: Query, c: Component) -> Query {
   case c, q {
     Named(name), QueryName(_) -> QueryName(name: Some(name))
-    Named(name), QueryNameForced(_) -> QueryNameForced(name: Some(name))
     Physical(hp, _size), QueryStatus(_) -> QueryStatus(hp: Some(hp))
     Equipable(slots), QueryEquipable(_) -> QueryEquipable(slots: slots)
 
@@ -228,16 +177,8 @@ pub fn add_components(entity: Entity, components: List(Component)) -> Entity {
   )
 }
 
-pub fn remove_all_components_of_type(
-  entity: Entity,
-  component_type: ComponentType,
-) {
-  Entity(
-    components: entity.components
-    |> list.filter(fn(component) {
-      bool.negate(is_component_type(component, component_type))
-    }),
-  )
+pub fn filter_components(entity: Entity, pred: fn(Component) -> Bool) {
+  Entity(components: list.filter(entity.components, pred))
 }
 
 fn name_optional_entity(entity: Option(Entity)) -> Option(String) {
@@ -245,7 +186,7 @@ fn name_optional_entity(entity: Option(Entity)) -> Option(String) {
     Some(equiped) -> {
       case query(equiped, QueryName(None)) {
         QueryName(Some(_) as some) -> some
-        _ -> Some("unknown")
+        _ -> Some("<unknown>")
       }
     }
     None -> None

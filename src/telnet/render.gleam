@@ -174,7 +174,9 @@ pub fn room_descripion(
 pub fn paper_doll(conn: Connection(_user_message), width, is_admin, paper_doll) {
   paper_doll
   |> list.map(fn(slot: #(dataentity.PaperDollSlotType, Option(String))) {
-    render_paper_doll_slot_type(slot.0) <> ": " <> render_item(slot.1)
+    render_paper_doll_slot_type(slot.0)
+    <> ": "
+    <> render_optional_item(slot.1, is_admin)
   })
   |> string.join("\n")
   |> word_wrap(width)
@@ -518,7 +520,7 @@ fn render_paper_doll_slot_type(slot: dataentity.PaperDollSlotType) -> String {
   |> bold
 }
 
-fn render_item(item: Option(String)) -> String {
+fn render_optional_item(item: Option(String), is_admin: Bool) -> String {
   case item {
     Some(name) -> name
     None -> gray("Empty")

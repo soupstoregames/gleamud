@@ -331,24 +331,24 @@ fn parse_command(
           ))
       }
     ["west", ..] | ["w", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.West))
+      Ok(simulation.CommandWalk(entity_id, world.West))
     ["east", ..] | ["e", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.East))
+      Ok(simulation.CommandWalk(entity_id, world.East))
     ["north", ..] | ["n", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.North))
+      Ok(simulation.CommandWalk(entity_id, world.North))
     ["south", ..] | ["s", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.South))
+      Ok(simulation.CommandWalk(entity_id, world.South))
     ["northeast", ..] | ["ne", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.NorthEast))
+      Ok(simulation.CommandWalk(entity_id, world.NorthEast))
     ["southeast", ..] | ["se", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.SouthEast))
+      Ok(simulation.CommandWalk(entity_id, world.SouthEast))
     ["northwest", ..] | ["nw", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.NorthWest))
+      Ok(simulation.CommandWalk(entity_id, world.NorthWest))
     ["southwest", ..] | ["sw", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.SouthWest))
-    ["up", ..] | ["u", ..] -> Ok(simulation.CommandMove(entity_id, world.Up))
+      Ok(simulation.CommandWalk(entity_id, world.SouthWest))
+    ["up", ..] | ["u", ..] -> Ok(simulation.CommandWalk(entity_id, world.Up))
     ["down", ..] | ["d", ..] ->
-      Ok(simulation.CommandMove(entity_id, world.Down))
+      Ok(simulation.CommandWalk(entity_id, world.Down))
 
     ["@hide", ..] -> Ok(simulation.AdminHide(entity_id))
     ["@show", ..] -> Ok(simulation.AdminShow(entity_id))

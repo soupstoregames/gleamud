@@ -14,7 +14,12 @@ pub fn add_components_test() {
 pub fn remove_all_components_of_type_test() {
   let ent =
     entity.new([entity.Invisible, entity.Named("named")])
-    |> entity.remove_all_components_of_type(entity.TInvisible)
+    |> entity.filter_components(fn(component) {
+      case component {
+        entity.Invisible -> False
+        _ -> True
+      }
+    })
 
   ent.components
   |> should.equal([entity.Named("named")])
@@ -94,7 +99,7 @@ pub fn query_paper_doll_test() {
     #(entity.Head, Some("Cap")),
     #(entity.Head, None),
     #(entity.Back, Some("Backpack")),
-    #(entity.Chest, Some("unknown")),
+    #(entity.Chest, Some("<unknown>")),
     #(entity.PrimaryHand, Some("Sword")),
     #(entity.OffHand, Some("Buckler")),
     #(entity.Legs, Some("Trousers")),
