@@ -1,16 +1,16 @@
+import data/world
+import gleam/bit_array
 import gleam/erlang/process.{type Subject}
-import gleam/otp/actor
+import gleam/function
 import gleam/int
 import gleam/list
+import gleam/otp/actor
 import gleam/string
 import gleam/string_builder
-import gleam/function
-import gleam/bit_array
 import glisten
 import glisten/transport
-import telnet/render
 import simulation
-import data/world
+import telnet/render
 
 pub type Message {
   Dimensions(Int, Int)

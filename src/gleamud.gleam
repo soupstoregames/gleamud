@@ -1,10 +1,10 @@
+import data/sqlite
+import envoy
 import gleam/erlang/process
 import gleam/io
-import telnet/server
-import simulation
-import data/sqlite
 import repeatedly
-import envoy
+import simulation
+import telnet/server
 
 pub fn main() {
   let db_str = case envoy.get("DB") {

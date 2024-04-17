@@ -1,3 +1,6 @@
+import data/entity as dataentity
+import data/prefabs
+import data/world
 import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
@@ -6,10 +9,6 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/result
-import data/entity as dataentity
-import data/prefabs
-import data/world
-import gleam/io
 
 //MARK: Commands
 /// Commands are sent from game connections to entities
@@ -711,17 +710,17 @@ fn move_entity(
           RoomLocation(target_room_id),
         ),
         rooms: state.rooms
-        |> dict.insert(
-          room_id,
-          Room(..room, entities: dict.delete(room.entities, entity.id)),
-        )
-        |> dict.insert(
-          target_room_id,
-          Room(
-            ..target_room,
-            entities: dict.insert(target_room.entities, entity.id, entity),
+          |> dict.insert(
+            room_id,
+            Room(..room, entities: dict.delete(room.entities, entity.id)),
+          )
+          |> dict.insert(
+            target_room_id,
+            Room(
+              ..target_room,
+              entities: dict.insert(target_room.entities, entity.id, entity),
+            ),
           ),
-        ),
       )
     }
     EntityLocation(_) -> todo

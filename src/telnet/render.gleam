@@ -1,16 +1,16 @@
 import chromatic.{bold, bright_blue, gray, green, magenta, red, yellow}
+import data/entity as dataentity
+import data/world
+import gleam/bytes_builder
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/regex
 import gleam/result
 import gleam/string
-import gleam/bytes_builder
-import gleam/regex
 import glisten.{type Connection}
 import telnet/constants
-import data/world
-import data/entity as dataentity
 
 pub const logo_str = "
 

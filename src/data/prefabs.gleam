@@ -1,6 +1,6 @@
+import data/entity
 import gleam/int
 import gleam/option.{None}
-import data/entity
 
 pub fn create_guest_player(id: Int) -> entity.Entity {
   entity.Entity([

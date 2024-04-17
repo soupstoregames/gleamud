@@ -1,6 +1,6 @@
+import data/entity.{handle_event, query}
 import gleam/option.{None, Some}
 import gleeunit/should
-import data/entity.{handle_event, query}
 
 pub fn add_components_test() {
   let ent =
